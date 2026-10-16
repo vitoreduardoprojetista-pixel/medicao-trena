@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b3d66">
+<title>Medição Trena</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f3f5f8; --card:#ffffff; --ink:#14202b; --muted:#5d6b78; --line:#d7dee6;
+  --pri:#0b3d66; --pri2:#125b96; --ok:#1d8a4a; --warn:#b5651d; --bad:#b3261e;
+  --chip:#e8eef5; --radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit}
+header.top{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));display:flex;align-items:center;gap:10px}
+header.top h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header.top button{background:transparent;border:0;color:#fff;font-size:22px;padding:4px 8px}
+main{padding:14px 14px 110px;max-width:760px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.muted{color:var(--muted);font-size:14px}
+.small{font-size:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 16px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:600}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.bad{color:var(--bad);border-color:#e9c3c0}
+.btn.block{width:100%}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px;align-items:center}
+.row.wrap{flex-wrap:wrap}
+.grow{flex:1}
+.list-item{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.list-item:first-child{border-top:0}
+.tag{display:inline-block;background:var(--chip);color:var(--pri);border-radius:8px;padding:2px 8px;font-weight:700;font-size:14px}
+.desc{font-size:13px;color:var(--muted);margin:6px 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.desc.open{-webkit-line-clamp:unset;display:block}
+.unit{border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
+.unit h4{margin:0 0 8px;font-size:15px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.field{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#fbfcfe}
+.field label{display:block;font-size:12px;color:var(--muted);font-weight:600}
+.field .val{display:flex;align-items:center;gap:6px}
+.field input{width:100%;border:0;background:transparent;font-size:20px;font-weight:700;padding:2px 0;color:var(--ink);min-width:0}
+.field input:focus{outline:none}
+.camb{flex:none;width:44px;height:44px;border-radius:10px;border:0;background:var(--pri);color:#fff;font-size:20px}
+.reads{font-size:11px;color:var(--muted);min-height:14px}
+.loc{grid-column:1/-1}
+.loc input{font-size:16px;font-weight:500}
+.proj{font-size:12px;color:var(--muted)}
+.done{color:var(--ok);font-weight:700}
+.cm-toggle{font-size:13px;color:var(--pri2);background:none;border:0;padding:8px 0;font-weight:600}
+.fab{position:fixed;left:0;right:0;bottom:0;padding:12px 14px;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 30%);display:flex;gap:10px;max-width:760px;margin:0 auto}
+.hidden{display:none!important}
+/* camera */
+#cam{position:fixed;inset:0;background:#000;z-index:20;display:flex;flex-direction:column}
+#camStage{position:relative;flex:1;overflow:hidden;touch-action:none}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#box{position:absolute;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 2000px rgba(0,0,0,.45)}
+#box.stable{border-color:#3ee07a}
+#box .hint{position:absolute;top:-28px;left:0;color:#fff;font-size:13px;white-space:nowrap;text-shadow:0 1px 2px #000}
+#camTop{position:absolute;top:0;left:0;right:0;padding:12px;padding-top:max(12px,env(safe-area-inset-top));display:flex;gap:8px;align-items:center;color:#fff;z-index:3}
+#camTop .t{flex:1;font-weight:700;text-shadow:0 1px 2px #000}
+#camTop button{background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:10px;padding:8px 12px;font-size:15px}
+#camPanel{background:#11161c;color:#fff;padding:12px 14px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+#reading{font-size:40px;font-weight:800;letter-spacing:1px;text-align:center;min-height:52px}
+#reading .u{font-size:18px;opacity:.7;margin-left:4px}
+#readStatus{text-align:center;font-size:13px;opacity:.75;min-height:18px}
+#chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0;min-height:30px}
+.chipR{background:#26313d;border-radius:20px;padding:4px 10px;font-size:14px;display:flex;align-items:center;gap:6px}
+.chipR.min{background:#1d8a4a}
+.chipR[data-tg]{font-size:17px;padding:8px 14px;cursor:pointer}
+.chipR button{background:none;border:0;color:#fff;opacity:.7;font-size:15px;padding:0 2px}
+#camPanel .btn{min-height:52px}
+#procWrap{position:absolute;right:10px;bottom:10px;background:#fff;border-radius:8px;padding:4px;z-index:3;max-width:45%}
+#procWrap canvas{display:block;max-width:100%;height:auto}
+#calibCtl label{font-size:13px;opacity:.8;display:block;margin-top:6px}
+#calibCtl input[type=range]{width:100%}
+#calibCtl select,#calibCtl input[type=text],#calibCtl input[type=number]{width:100%;background:#1c242d;color:#fff;border:1px solid #34404c;border-radius:10px;padding:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);top:max(70px,calc(env(safe-area-inset-top) + 60px));background:#14202b;color:#fff;padding:10px 16px;border-radius:12px;z-index:50;font-size:14px;max-width:90%;text-align:center}
+.prof{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.prof:first-child{border-top:0}
+.prof .on{color:var(--ok);font-weight:700;font-size:13px}
+input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <button id="btnBack" class="hidden" aria-label="Voltar">←</button>
+  <h1 id="title">Medição Trena</h1>
+  <button id="btnTrenas" aria-label="Trenas">📏</button>
+</header>
+
+<main id="viewHome">
+  <div class="card">
+    <div class="row">
+      <div class="grow">
+        <div style="font-weight:700">Trena ativa</div>
+        <div class="muted" id="homeTrena">—</div>
+      </div>
+      <button class="btn" id="btnGoTrenas">Trenas</button>
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-weight:700;margin-bottom:6px">Obras</div>
+    <div id="obrasList" class="muted">Nenhuma obra ainda. Importe o PDF de medição do CEM.</div>
+  </div>
+  <input type="file" id="filePdf" accept="application/pdf" class="hidden">
+  <div class="fab"><button class="btn pri block" id="btnImport">＋ Importar PDF da obra</button></div>
+</main>
+
+<main id="viewObra" class="hidden">
+  <div class="card" id="obraHead"></div>
+  <div id="itemsList"></div>
+  <div class="fab">
+    <button class="btn pri block" id="btnExport">Gerar PDF preenchido</button>
+  </div>
+</main>
+
+<main id="viewTrenas" class="hidden">
+  <div class="card">
+    <div style="font-weight:700;margin-bottom:4px">Perfis de trena</div>
+    <div class="muted small" style="margin-bottom:8px">Cada trena (ou situação de luz) tem a sua calibração. Toque em um perfil para ativar.</div>
+    <div id="profList"></div>
+  </div>
+  <div class="card">
+    <input class="txt" id="newProfName" placeholder="Nome da nova trena (ex.: Bosch GLM 50 C - Vitor)">
+    <div style="height:8px"></div>
+    <button class="btn pri block" id="btnNewProf">Criar e calibrar</button>
+  </div>
+</main>
+
+<!-- câmera -->
+<div id="cam" class="hidden">
+  <div id="camStage">
+    <video id="video" playsinline muted autoplay></video>
+    <div id="box"><div class="hint">Enquadre só o número principal</div></div>
+    <div id="camTop"><div class="t" id="camTitle">Largura</div><button id="btnCamClose">Fechar</button></div>
+    <div id="procWrap" class="hidden"><canvas id="procCanvas"></canvas></div>
+  </div>
+  <div id="camPanel">
+    <div id="measureCtl">
+      <div id="reading">—</div>
+      <div id="readStatus">Carregando…</div>
+      <div id="chips"></div>
+      <div class="row">
+        <button class="btn grow" id="btnAddRead" disabled>＋ Adicionar leitura</button>
+        <button class="btn ok grow" id="btnDone">Concluir</button>
+      </div>
+    </div>
+    <div id="calibCtl" class="hidden">
+      <label>O que ler na tela da trena</label>
+      <select id="calMode"><option value="multi">As 4 medidas de uma vez (histórico + última)</option><option value="single">Só a medida principal (uma por vez)</option></select>
+      <div class="grid2">
+        <div><label>Largura do quadro</label><input type="range" id="rgW" min="20" max="95"></div>
+        <div><label>Altura do quadro</label><input type="range" id="rgH" min="5" max="50"></div>
+      </div>
+      <div class="muted small" style="color:#9fb0c0">Arraste o quadro amarelo sobre as medidas (no modo "só a principal", cubra só o número grande). Digite o valor da <b>medida principal</b> (a maior, embaixo) e toque em Auto calibrar.</div>
+      <div class="grid2">
+        <div><label>Medida principal na tela</label><input type="text" id="calExpect" inputmode="decimal" placeholder="ex.: 0.474"></div>
+        <div><label>Unidade do visor</label>
+          <select id="calUnit"><option value="m">metros (0.474 m)</option><option value="cm">centímetros</option><option value="mm">milímetros</option></select></div>
+      </div>
+      <div style="height:8px"></div>
+      <button class="btn pri block" id="btnAutoCal">Auto calibrar</button>
+      <div id="calResult" class="small" style="text-align:center;min-height:18px;margin:6px 0;color:#cfe0ee"></div>
+      <details style="margin-bottom:8px"><summary class="small" style="color:#9fb0c0">Ajuste manual</summary>
+        <div class="grid2">
+          <div><label>Canal de cor</label><select id="calChan"><option value="min">Mínimo (dígito claro)</option><option value="lum">Brilho</option><option value="max">Máximo (dígito escuro)</option></select></div>
+          <div><label>Polaridade</label><select id="calPol"><option value="auto">Automática</option><option value="light">Dígito claro</option><option value="dark">Dígito escuro</option></select></div>
+        </div>
+        <label>Ajuste de limiar: <span id="offV">0</span></label><input type="range" id="calOff" min="-60" max="60" step="5">
+      </details>
+      <div class="row"><button class="btn grow" id="btnCalCancel">Cancelar</button><button class="btn ok grow" id="btnCalSave">Salvar perfil</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="parse.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
