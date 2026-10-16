@@ -1,4 +1,13 @@
-# Medição Trena — versão 5 (teste)
+# Medição Trena — versão 6 (teste)
+
+## Novo na versão 6: leitura por FOTO
+- Ao tocar no 📷 de um campo, abre a **câmera normal do celular**. Tire a foto da tela da trena e o app lê a foto parada (resolução total, foco automático). Acabou o vídeo, que travava o app.
+- O quadro amarelo aparece sobre a foto: arraste para mover e use a bolinha no canto para mudar o tamanho. A posição fica guardada para as próximas fotos.
+- Se a leitura não pegar tudo, o app tenta sozinho outros ajustes na mesma foto. Você também pode ajustar o quadro e tocar em **Ler de novo**, ou tirar uma **Nova foto**.
+- A calibração também é por foto: Trenas → Calibrar → tirar foto → ajustar o quadro → digitar a principal → Auto calibrar → Salvar.
+- **Calibre de novo** cada trena depois de atualizar.
+
+## Versão 5
 
 ## Correções da versão 5
 - As medidas de cima também são lidas quando a câmera entrega pouca resolução ou os dígitos ficam grudados.

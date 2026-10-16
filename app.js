@@ -43,7 +43,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch
 
 /* ================= perfis de trena ================= */
 // box em frações da IMAGEM DA CÂMERA (não da tela)
-const DEFAULT_PROFILE = { mode: 'multi', box: { x: 0.12, y: 0.28, w: 0.76, h: 0.34 }, chan: 'lum', pol: 'auto', off: 0 };
+const DEFAULT_PROFILE = { mode: 'multi', pbox: { x: 0.2, y: 0.3, w: 0.6, h: 0.35 }, chan: 'lum', pol: 'auto', off: 0 };
 let profiles = lsGet('trenas', null);
 if (!profiles || !profiles.length) profiles = [Object.assign({ id: 'p' + Date.now(), name: 'Trena padrão' }, JSON.parse(JSON.stringify(DEFAULT_PROFILE)))];
 let activeProfileId = lsGet('trenaAtiva', profiles[0].id);
@@ -335,18 +335,6 @@ function getOcr() {
 }
 async function ocr(canvas) { const s = await getOcr(); const r = await s.addJob('recognize', canvas); return r.data; }
 
-/* recorte do quadro (box em frações da imagem da câmera) */
-function grabCrop(video, box, targetH = 360) {
-  const vw = video.videoWidth, vh = video.videoHeight;
-  let x = box.x * vw, y = box.y * vh, w = box.w * vw, h = box.h * vh;
-  x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
-  const k = Math.min(targetH / h, 1000 / w);
-  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
-  const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high';
-  g.drawImage(video, x, y, w, h, 0, 0, c.width, c.height);
-  return c;
-}
-
 /* binariza: máscara com 1 = pixel de texto (dígito claro ou escuro, detectado sozinho) */
 function makeMask(src, prm) {
   const W = src.width, H = src.height;
@@ -519,115 +507,120 @@ function parseExpected(str) {
   const n = parseInt(s, 10); return isFinite(n) ? n : null;
 }
 
-/* ================= câmera ================= */
-let camState = null, stream = null;
+/* ================= câmera: FOTO da câmera do celular (não vídeo) ================= */
+let camState = null;
+const setStatus = t => { $('#readStatus').textContent = t; };
 
-function camMap() {
-  const v = $('#video'), st = $('#camStage');
-  const vw = v.videoWidth, vh = v.videoHeight, sw = st.clientWidth, sh = st.clientHeight;
-  if (!vw || !vh || !sw || !sh) return null;
-  const sc = Math.max(sw / vw, sh / vh);
-  return { vw, vh, sw, sh, sc, ox: (sw - vw * sc) / 2, oy: (sh - vh * sc) / 2 };
+/* recorte do quadro (box em frações da FOTO) */
+function cropImg(img, box, targetH = 400) {
+  const iw = img.width, ih = img.height;
+  let x = box.x * iw, y = box.y * ih, w = box.w * iw, h = box.h * ih;
+  x = Math.max(0, x); y = Math.max(0, y); w = Math.min(iw - x, w); h = Math.min(ih - y, h);
+  const k = Math.min(targetH / h, 1100 / w);
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+  const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high';
+  g.drawImage(img, x, y, w, h, 0, 0, c.width, c.height);
+  return c;
 }
 
-async function openCam(opts) {
-  camState = Object.assign({ loop: 0 }, opts);
+function openCam(opts) {
+  // abre a câmera do celular já no toque (precisa ser imediato)
+  camState = Object.assign({ photo: null }, opts);
   camState.prm = JSON.parse(JSON.stringify(opts.profile || activeProfile()));
-  const s = camState, multi = isMulti(s.prm);
+  camState.prm.pbox = camState.prm.pbox || { x: 0.2, y: 0.3, w: 0.6, h: 0.35 };
+  takePhoto();
+  const s = camState;
   $('#cam').classList.remove('hidden');
   $('#camTitle').textContent = opts.title;
   $('#measureCtl').classList.toggle('hidden', opts.mode !== 'measure');
   $('#calibCtl').classList.toggle('hidden', opts.mode !== 'calib');
   $('#procWrap').classList.add('hidden');
-  $('#box .hint').textContent = multi ? 'Enquadre as medidas da tela' : 'Enquadre a medida principal';
+  $('#photo').removeAttribute('src'); $('#box').classList.add('hidden'); $('#noPhoto').classList.remove('hidden');
+  resetMeasureUi();
   history.pushState({ cam: 1 }, '');
-  resetMeasureUi(); placeBox();
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: false });
-    const v = $('#video'); v.srcObject = stream; await v.play();
-    try {
-      const tr = stream.getVideoTracks()[0], cap = tr.getCapabilities ? tr.getCapabilities() : {};
-      if (cap.focusMode && cap.focusMode.includes('continuous')) await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-    } catch (e) { }
-  } catch (e) { setStatus('Sem acesso à câmera. Libere a permissão do navegador.'); return; }
-  placeBox();
-  if (opts.mode === 'measure') {
-    setStatus(ocrSched ? 'Aponte para a tela da trena' : 'Carregando leitor (1ª vez precisa de internet)…');
-    try { await getOcr(); } catch (e) { setStatus('Falha ao carregar o leitor. Verifique a internet.'); return; }
-    startLoop();
-  } else {
-    $('#calResult').textContent = 'Enquadre a tela da trena e toque em Capturar.';
-    getOcr().catch(() => { });
-  }
+  getOcr().catch(() => { });   // vai carregando o leitor enquanto a foto é tirada
 }
-const setStatus = t => { $('#readStatus').textContent = t; };
+function takePhoto(gallery) { const el = gallery ? $('#galleryIn') : $('#photoIn'); el.value = ''; el.click(); }
 
 function closeCam(fromRoute) {
   if (!camState) return;
-  camState.loop++; camState = null;
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  $('#cam').classList.add('hidden');
+  const s = camState; camState = null;
+  if (s.bmp && s.bmp.close) s.bmp.close();
+  if (s.url) URL.revokeObjectURL(s.url);
+  $('#cam').classList.add('hidden'); $('#dlg').classList.add('hidden');
   if (!fromRoute && history.state && history.state.cam) history.back();
 }
 window.addEventListener('popstate', () => { if (camState) closeCam(true); });
 window.addEventListener('hashchange', route);
 $('#btnCamClose').onclick = () => closeCam();
 
-/* ---- medição: lê sozinho e congela no primeiro resultado confiável ---- */
+async function onPhoto(file) {
+  const s = camState; if (!s || !file) return;
+  setStatus('Carregando foto…'); $('#calResult').textContent = 'Carregando foto…';
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch (e) {   // celulares antigos: usa <img>
+    bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(file); });
+  }
+  if (camState !== s) return;
+  if (s.bmp && s.bmp.close) s.bmp.close(); if (s.url) URL.revokeObjectURL(s.url);
+  s.bmp = bmp; s.file = file; s.url = URL.createObjectURL(file);
+  const img = $('#photo');
+  await new Promise(r => { img.onload = r; img.onerror = r; img.src = s.url; });
+  $('#noPhoto').classList.add('hidden'); $('#box').classList.remove('hidden');
+  placeBox();
+  if (s.mode === 'measure') doRead();
+  else {
+    $('#btnAutoCal').disabled = false; $('#btnDiag').classList.remove('hidden');
+    $('#calResult').textContent = 'Ajuste o quadro amarelo sobre a tela da trena, digite a medida principal e toque em Auto calibrar.';
+  }
+}
+$('#photoIn').onchange = e => onPhoto(e.target.files[0]);
+$('#galleryIn').onchange = e => onPhoto(e.target.files[0]);
+// se a pessoa cancelar a câmera sem tirar foto, volta para a obra
+$('#photoIn').addEventListener('cancel', () => { if (camState && !camState.bmp && camState.mode === 'measure') closeCam(); });
+
+/* ---- medição: lê a foto parada ---- */
 function resetMeasureUi() {
   const s = camState; if (!s) return;
-  s.sel = null; s.frozen = false; s.acc = []; s.t0 = Date.now();
-  $('#box').classList.remove('stable'); $('#snapWrap').classList.add('hidden');
+  s.sel = null; $('#box').classList.remove('stable');
   $('#reading').innerHTML = '—'; $('#chips').innerHTML = '';
+  setStatus('Tire a foto da tela da trena.');
   $('#btnUse').disabled = true; $('#btnUse').textContent = '✓ Usar medidas';
 }
-function startLoop() { const s = camState; if (!s) return; resetMeasureUi(); runLoop(++s.loop); }
 
-async function runLoop(id) {
-  const v = $('#video');
-  while (camState && camState.loop === id && !camState.frozen) {
-    if (!v.videoWidth) { await sleep(120); continue; }
-    const s = camState;
-    try {
-      const crop = grabCrop(v, s.prm.box);
-      const r = await readScreen(crop, s.prm);
-      if (camState !== s || s.loop !== id || s.frozen) break;
-      r.crop = crop;
-      if (r.perfect) { freeze(r); break; }
-      // soma as linhas lidas em quadros diferentes (cada linha pela posição na tela)
-      const acc = accumulate(s, r);
-      if (acc.perfect) { freeze(acc); break; }
-      const waited = Date.now() - s.t0;
-      if (waited > 6000 && acc.main && acc.main.mm) { freeze(acc); break; }   // depois de 6 s usa o que conseguiu
-      const got = acc.vals.filter(v => v.ok).length, need = isMulti(s.prm) ? (s.prm.nRows || 4) : 1;
-      $('#reading').innerHTML = acc.vals.length ? `<span style="opacity:.45;font-size:24px">${acc.vals.map(x => x.mm).join(' · ')}</span>` : '—';
-      setStatus(acc.vals.length ? `Lendo… ${got} de ${need} medidas — segure firme` : 'Enquadre as medidas da tela no quadro');
-    } catch (e) { console.warn(e); await sleep(300); }
+async function doRead() {
+  const s = camState; if (!s || !s.bmp || s.busy) return;
+  s.busy = true; resetMeasureUi(); $('#btnReread').disabled = true;
+  setStatus(ocrSched ? 'Lendo a foto…' : 'Carregando leitor (1ª vez precisa de internet)…');
+  try { await getOcr(); } catch (e) { setStatus('Falha ao carregar o leitor. Verifique a internet.'); s.busy = false; $('#btnReread').disabled = false; return; }
+  const crop = cropImg(s.bmp, s.prm.pbox);
+  // ajuste calibrado primeiro; se não ler tudo, tenta outros na mesma foto
+  const seen = new Set(), combos = [];
+  for (const c of [{ chan: s.prm.chan, off: s.prm.off || 0 }, { chan: 'lum', off: 0 }, { chan: 'min', off: 0 }, { chan: 'max', off: 0 }, { chan: 'lum', off: 20 }, { chan: 'lum', off: -20 }]) {
+    const k = c.chan + c.off; if (!seen.has(k)) { seen.add(k); combos.push(c); }
   }
-}
-
-function accumulate(s, r) {
-  s.acc = s.acc || [];
-  for (const v of r.vals) {
-    const a = s.acc.find(a => Math.abs(a.y - v.y) < 0.07);
-    if (!a) s.acc.push(Object.assign({}, v));
-    else if (v.ok || !a.ok) Object.assign(a, v);     // leitura confiável substitui; duvidosa não estraga uma confiável
+  let best = null, n = 0;
+  for (const c of combos) {
+    if (camState !== s) return;
+    n++; setStatus(`Lendo a foto… (${n}/${combos.length})`);
+    let r; try { r = await readScreen(crop, Object.assign({}, s.prm, c)); } catch (e) { console.warn(e); continue; }
+    if (!best || r.score > best.score) best = r;
+    if (r.perfect) break;
   }
-  s.acc.sort((a, b) => a.y - b.y);
-  // a principal é a de maior tamanho
-  const hmax = Math.max(0, ...s.acc.map(a => a.Hd));
-  s.acc.forEach(a => { a.main = a.Hd >= 0.92 * hmax && hmax >= 1.2 * Math.min(...s.acc.map(q => q.Hd)); });
-  if (!s.acc.some(a => a.main) && s.acc.length) s.acc[s.acc.length - 1].main = true;
-  const main = s.acc.find(a => a.main), need = isMulti(s.prm) ? (s.prm.nRows || 4) : 1;
-  const vals = isMulti(s.prm) ? s.acc.slice() : (main ? [main] : []);
-  return { vals, main, crop: r.crop, perfect: !!(main && main.ok) && vals.length >= need && vals.every(v => v.ok) };
+  s.busy = false; $('#btnReread').disabled = false;
+  if (camState !== s) return;
+  if (!best || !best.vals.length) { setStatus('Não consegui ler. Ajuste o quadro amarelo sobre as medidas e toque em "Ler de novo", ou tire outra foto.'); return; }
+  freeze(best);
 }
+$('#btnReread').onclick = () => doRead();
+$('#btnNewPhoto').onclick = () => takePhoto();
+$('#btnGallery').onclick = e => { e.preventDefault(); takePhoto(true); };
 
 function freeze(r) {
-  const s = camState; s.frozen = true;
+  const s = camState;
   if (navigator.vibrate) navigator.vibrate(60);
   $('#box').classList.add('stable');
-  const snap = $('#snapImg'); snap.src = r.crop.toDataURL('image/jpeg', 0.8); $('#snapWrap').classList.remove('hidden');
   const ref = r.main && r.main.mm ? r.main.mm : r.vals[r.vals.length - 1].mm;
   // todas as medidas lidas entram marcadas; ⚠ e ? são só avisos (você desmarca se quiser)
   s.sel = r.vals.map(v => ({ mm: v.mm, main: v.main, ok: v.ok, far: Math.abs(v.mm - ref) > DIF_MAX, on: true }));
@@ -641,7 +634,7 @@ function renderSel() {
   const on = s.sel.filter(v => v.on).map(v => v.mm), min = on.length ? Math.min(...on) : null;
   $('#reading').innerHTML = min ? `${min}<span class="u">mm${on.length > 1 ? ' (menor)' : ''}</span>` : '—';
   const warn = [];
-  if (s.missing) warn.push(`Li ${s.sel.length} de ${s.sel.length + s.missing} medidas — toque em "Ler de novo" para tentar todas`);
+  if (s.missing) warn.push(`Li ${s.sel.length} de ${s.sel.length + s.missing} medidas — ajuste o quadro e toque em "Ler de novo", ou tire outra foto`);
   if (s.sel.some(v => v.far)) warn.push(`⚠ = mais de ${DIF_MAX} mm de diferença da última`);
   if (s.sel.some(v => !v.ok)) warn.push('? = leitura duvidosa');
   setStatus((warn.length ? warn.join(' · ') + '. ' : '') + 'Confira com a foto. Toque numa medida para desmarcar.');
@@ -657,109 +650,101 @@ $('#chips').addEventListener('click', e => {
 $('#btnUse').onclick = () => {
   const s = camState; if (!s || !s.sel) return;
   const reads = s.sel.filter(v => v.on).map(v => v.mm); if (!reads.length) return;
+  // guarda a posição do quadro para as próximas fotos
+  const p = activeProfile(); p.pbox = Object.assign({}, s.prm.pbox); saveProfiles();
   closeCam(); s.onDone && s.onDone(reads);
 };
-$('#btnRetry').onclick = () => { if (camState) { startLoop(); setStatus('Aponte para a tela da trena'); } };
 
-/* quadro arrastável (posição guardada em relação à imagem da câmera) */
+/* quadro sobre a foto: arrastar move, o canto redimensiona (em frações da foto) */
+function imgMap() {
+  const img = $('#photo'), st = $('#camStage');
+  const iw = img.naturalWidth, ih = img.naturalHeight, sw = st.clientWidth, sh = st.clientHeight;
+  if (!iw || !ih || !sw || !sh) return null;
+  const sc = Math.min(sw / iw, sh / ih);
+  return { iw, ih, sc, ox: (sw - iw * sc) / 2, oy: (sh - ih * sc) / 2 };
+}
 function placeBox() {
   if (!camState) return;
-  const b = camState.prm.box, el = $('#box'), m = camMap();
-  if (!m) { el.style.left = (b.x * 100) + '%'; el.style.top = (b.y * 100) + '%'; el.style.width = (b.w * 100) + '%'; el.style.height = (b.h * 100) + '%'; return; }
-  el.style.left = (b.x * m.vw * m.sc + m.ox) + 'px'; el.style.top = (b.y * m.vh * m.sc + m.oy) + 'px';
-  el.style.width = (b.w * m.vw * m.sc) + 'px'; el.style.height = (b.h * m.vh * m.sc) + 'px';
+  const b = camState.prm.pbox, el = $('#box'), m = imgMap(); if (!m) return;
+  el.style.left = (b.x * m.iw * m.sc + m.ox) + 'px'; el.style.top = (b.y * m.ih * m.sc + m.oy) + 'px';
+  el.style.width = (b.w * m.iw * m.sc) + 'px'; el.style.height = (b.h * m.ih * m.sc) + 'px';
 }
 (function dragBox() {
   const el = $('#box'); let st = null;
-  el.addEventListener('pointerdown', e => { if (!camState) return; st = { x: e.clientX, y: e.clientY, b: Object.assign({}, camState.prm.box) }; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointerdown', e => {
+    if (!camState) return; e.preventDefault();
+    st = { x: e.clientX, y: e.clientY, b: Object.assign({}, camState.prm.pbox), resize: !!e.target.closest('.handle') };
+    el.setPointerCapture(e.pointerId);
+  });
   el.addEventListener('pointermove', e => {
     if (!st || !camState) return;
-    const m = camMap(); if (!m) return;
-    const b = camState.prm.box;
-    b.x = Math.min(1 - b.w, Math.max(0, st.b.x + (e.clientX - st.x) / (m.vw * m.sc)));
-    b.y = Math.min(1 - b.h, Math.max(0, st.b.y + (e.clientY - st.y) / (m.vh * m.sc)));
+    const m = imgMap(); if (!m) return;
+    const b = camState.prm.pbox, dx = (e.clientX - st.x) / (m.iw * m.sc), dy = (e.clientY - st.y) / (m.ih * m.sc);
+    if (st.resize) {
+      b.w = Math.min(1 - b.x, Math.max(0.05, st.b.w + dx)); b.h = Math.min(1 - b.y, Math.max(0.04, st.b.h + dy));
+    } else {
+      b.x = Math.min(1 - b.w, Math.max(0, st.b.x + dx)); b.y = Math.min(1 - b.h, Math.max(0, st.b.y + dy));
+    }
     placeBox();
   });
-  el.addEventListener('pointerup', () => { st = null; });
-  $('#video').addEventListener('loadedmetadata', placeBox);
+  const end = () => { if (st && camState) { $('#box').classList.remove('stable'); if (camState.mode === 'measure' && camState.sel) setStatus('Quadro mudou — toque em "Ler de novo".'); } st = null; };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
   if (window.ResizeObserver) new ResizeObserver(() => placeBox()).observe($('#camStage'));
   else window.addEventListener('resize', placeBox);
 })();
 
-/* ================= calibração (sobre uma foto capturada) ================= */
+/* ================= calibração (sobre uma foto) ================= */
 function startCalib(p) {
   openCam({
     mode: 'calib', title: 'Calibrar: ' + p.name, profile: p,
     onSave: prm => { Object.assign(p, prm, { calibrado: Date.now() }); activeProfileId = p.id; saveProfiles(); renderTrenas(); toast('Perfil salvo e ativado.'); }
   });
   const prm = camState.prm; prm.mode = prm.mode || 'multi';
-  camState.snap = null; camState.found = null;
   $('#calMode').value = prm.mode;
-  $('#rgW').value = Math.round(prm.box.w * 100); $('#rgH').value = Math.round(prm.box.h * 100);
   $('#calChan').value = prm.chan || 'lum'; $('#calOff').value = prm.off || 0; $('#offV').textContent = prm.off || 0;
-  $('#calExpect').value = ''; $('#btnAutoCal').disabled = true; $('#btnCapture').textContent = '📸 Capturar';
-  $('#btnDiag').classList.add('hidden');
+  $('#calExpect').value = ''; $('#btnAutoCal').disabled = true; $('#btnDiag').classList.add('hidden');
   $('#btnCalSave').disabled = !p.calibrado;
+  $('#calResult').textContent = 'Tire uma foto da tela da trena.';
 }
-function resizeBox(k, v) {
-  if (!camState) return; const b = camState.prm.box, cxv = b.x + b.w / 2, cyv = b.y + b.h / 2;
-  b[k] = v / 100;
-  b.x = Math.min(1 - b.w, Math.max(0, cxv - b.w / 2)); b.y = Math.min(1 - b.h, Math.max(0, cyv - b.h / 2)); placeBox();
-}
-$('#rgW').oninput = e => resizeBox('w', +e.target.value);
-$('#rgH').oninput = e => resizeBox('h', +e.target.value);
-$('#calMode').onchange = e => { if (camState) { camState.prm.mode = e.target.value; $('#box .hint').textContent = isMulti(camState.prm) ? 'Enquadre as medidas da tela' : 'Enquadre a medida principal'; } };
+$('#calMode').onchange = e => { if (camState) camState.prm.mode = e.target.value; };
 $('#calChan').onchange = e => { camState && (camState.prm.chan = e.target.value); };
 $('#calOff').oninput = e => { $('#offV').textContent = e.target.value; camState && (camState.prm.off = +e.target.value); };
 $('#btnCalCancel').onclick = () => closeCam();
 $('#btnCalSave').onclick = () => { const s = camState; if (!s) return; const prm = JSON.parse(JSON.stringify(s.prm)); closeCam(); s.onSave(prm); };
+$('#btnCalPhoto').onclick = () => takePhoto();
+$('#btnCalGallery').onclick = e => { e.preventDefault(); takePhoto(true); };
 
 $('#btnDiag').onclick = async () => {
-  const s = camState; if (!s || !s.snap) return;
-  const blob = c => new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
-  const files = [new File([await blob(s.snap)], 'trena-recorte.jpg', { type: 'image/jpeg' })];
-  if (s.snapFull) files.push(new File([await blob(s.snapFull)], `trena-camera-${s.snapRes}.jpg`, { type: 'image/jpeg' }));
+  const s = camState; if (!s || !s.file) return;
+  const crop = cropImg(s.bmp, s.prm.pbox);
+  const cropBlob = await new Promise(r => crop.toBlob(r, 'image/jpeg', 0.92));
+  const files = [new File([s.file], 'trena-foto.jpg', { type: s.file.type || 'image/jpeg' }), new File([cropBlob], 'trena-recorte.jpg', { type: 'image/jpeg' })];
   if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: 'Foto da trena para análise' }); return; } catch (e) { if (e.name === 'AbortError') return; } }
   for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }
 };
 
-$('#btnCapture').onclick = () => {
-  const s = camState, v = $('#video'); if (!s || !v.videoWidth) return;
-  s.snap = grabCrop(v, s.prm.box);
-  // cópia em resolução original, para diagnóstico
-  const k = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
-  s.snapFull = document.createElement('canvas'); s.snapFull.width = Math.round(v.videoWidth * k); s.snapFull.height = Math.round(v.videoHeight * k);
-  s.snapFull.getContext('2d').drawImage(v, 0, 0, s.snapFull.width, s.snapFull.height);
-  s.snapRes = `${v.videoWidth}×${v.videoHeight}`;
-  $('#btnDiag').classList.remove('hidden');
-  const pc = $('#procCanvas'); pc.width = s.snap.width; pc.height = s.snap.height; pc.getContext('2d').drawImage(s.snap, 0, 0);
-  $('#procWrap').classList.remove('hidden');
-  $('#btnCapture').textContent = '📸 Capturar de novo'; $('#btnAutoCal').disabled = false;
-  $('#calResult').textContent = 'Foto capturada. Digite a medida principal (opcional) e toque em Auto calibrar.';
-};
-
 $('#btnAutoCal').onclick = async () => {
-  const s = camState; if (!s || !s.snap || s.autoBusy) return;
+  const s = camState; if (!s || !s.bmp || s.autoBusy) return;
   const expected = parseExpected($('#calExpect').value);
-  s.autoBusy = true; $('#btnAutoCal').disabled = true; $('#btnCapture').disabled = true;
-  try { await getOcr(); } catch (e) { $('#calResult').textContent = 'Falha ao carregar o leitor. Verifique a internet.'; s.autoBusy = false; $('#btnAutoCal').disabled = false; $('#btnCapture').disabled = false; return; }
+  s.autoBusy = true; $('#btnAutoCal').disabled = true;
+  try { await getOcr(); } catch (e) { $('#calResult').textContent = 'Falha ao carregar o leitor. Verifique a internet.'; s.autoBusy = false; $('#btnAutoCal').disabled = false; return; }
+  const snap = cropImg(s.bmp, s.prm.pbox);
   const combos = [];
   for (const off of [0, 20, -20, 40, -40]) for (const chan of ['lum', 'min', 'max']) combos.push({ chan, off, pol: 'auto' });
   let best = null, n = 0;
   for (const c of combos) {
     if (camState !== s) return;
     n++; $('#calResult').textContent = `Testando ajustes… ${n}/${combos.length}`;
-    const prm = Object.assign({}, s.prm, c);
-    let r; try { r = await readScreen(s.snap, prm, true); } catch (e) { continue; }
+    const prm = Object.assign({}, s.prm, c, { digits: undefined });
+    let r; try { r = await readScreen(snap, prm, true); } catch (e) { continue; }
     const hit = expected != null && r.main && r.main.mm === expected;
     const score = (hit ? 10000 : 0) + r.score;
     if (!best || score > best.score) best = { score, c, r, hit };
     if (hit && r.perfect && (!isMulti(prm) || r.vals.length >= 4)) break;
   }
-  s.autoBusy = false; $('#btnAutoCal').disabled = false; $('#btnCapture').disabled = false;
-  if (!best || !best.r.vals.length) { $('#calResult').textContent = 'Não consegui ler. Ajuste o quadro para cobrir as medidas, capture de novo e tente outra vez.'; return; }
+  s.autoBusy = false; $('#btnAutoCal').disabled = false;
+  if (!best || !best.r.vals.length) { $('#calResult').textContent = 'Não consegui ler. Ajuste o quadro para cobrir as medidas (pode ser a tela toda) e tente de novo.'; return; }
   Object.assign(s.prm, best.c);
-  // quantas medidas esta trena mostra: só aprende quando a calibração acertou
   if (isMulti(s.prm) && best.r.vals.length >= 2 && (best.hit || (expected == null && best.r.perfect))) s.prm.nRows = Math.max(1, best.r.vals.length);
   if (best.r.main && best.r.main.ok && (best.hit || expected == null)) s.prm.digits = best.r.main.digits.length;
   $('#calChan').value = best.c.chan; $('#calOff').value = best.c.off; $('#offV').textContent = best.c.off;
@@ -768,11 +753,11 @@ $('#btnAutoCal').onclick = async () => {
   let msg = (expected != null ? (best.hit ? '✓ Principal correta. ' : `⚠ Não achei ${expected} como medida principal. Melhor ajuste: `) : 'Melhor ajuste: ');
   msg += `principal ${main}` + (others.length ? ` · anteriores ${others.join(' · ')}` : '') + '.';
   if (isMulti(s.prm) && r.vals.length < 2)
-    msg += ' ⚠ As medidas de cima NÃO foram lidas. Aproxime a câmera da tela da trena, evite reflexo e capture de novo. Se continuar, toque em "Enviar foto para análise".';
-  else msg += (isMulti(s.prm) ? ` (${r.vals.length} medidas na tela)` : '') + ' Confira os retângulos na imagem e toque em Salvar.';
-  msg += ` [câmera ${s.snapRes}]`;
+    msg += ' ⚠ As medidas de cima NÃO foram lidas. Tire outra foto mais de perto, sem reflexo. Se continuar, toque em "Enviar foto para análise".';
+  else msg += (isMulti(s.prm) ? ` (${r.vals.length} medidas na tela)` : '') + ' Confira os retângulos e toque em Salvar.';
   $('#calResult').textContent = msg;
   const pc = $('#procCanvas'); pc.width = r.preview.width; pc.height = r.preview.height; pc.getContext('2d').drawImage(r.preview, 0, 0);
+  $('#procWrap').classList.remove('hidden');
   $('#btnCalSave').disabled = false;
 };
 

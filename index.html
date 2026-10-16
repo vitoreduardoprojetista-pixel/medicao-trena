@@ -74,8 +74,12 @@ main{padding:14px 14px 110px;max-width:760px;margin:0 auto}
 /* camera */
 #cam{position:fixed;inset:0;background:#000;z-index:20;display:flex;flex-direction:column}
 #camStage{position:relative;flex:1;overflow:hidden;touch-action:none}
-#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-#box{position:absolute;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 2000px rgba(0,0,0,.45)}
+#photo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#noPhoto{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#cfe0ee;text-align:center;font-size:18px;gap:6px;padding:20px}
+#box{touch-action:none}
+#box .handle{position:absolute;right:-14px;bottom:-14px;width:30px;height:30px;border-radius:50%;background:#ffd400;border:3px solid #11161c}
+#box.stable .handle{background:#3ee07a}
+#box{position:absolute;border:3px solid #ffd400;border-radius:8px;box-shadow:0 0 0 2000px rgba(0,0,0,.3)}
 #box.stable{border-color:#3ee07a}
 #box .hint{position:absolute;top:-28px;left:0;color:#fff;font-size:13px;white-space:nowrap;text-shadow:0 1px 2px #000}
 #camTop{position:absolute;top:0;left:0;right:0;padding:12px;padding-top:max(12px,env(safe-area-inset-top));display:flex;gap:8px;align-items:center;color:#fff;z-index:3}
@@ -90,7 +94,7 @@ main{padding:14px 14px 110px;max-width:760px;margin:0 auto}
 .chipR.min{background:#1d8a4a}
 .chipR button{background:none;border:0;color:#fff;opacity:.7;font-size:15px;padding:0 2px}
 #camPanel .btn{min-height:52px}
-#procWrap{position:absolute;right:10px;bottom:10px;background:#fff;border-radius:8px;padding:4px;z-index:3;max-width:45%}
+#procWrap{position:absolute;right:10px;bottom:10px;pointer-events:none;background:#fff;border-radius:8px;padding:4px;z-index:3;max-width:45%}
 #procWrap canvas{display:block;max-width:100%;height:auto}
 #calibCtl label{font-size:13px;opacity:.8;display:block;margin-top:6px}
 #calibCtl input[type=range]{width:100%}
@@ -152,35 +156,36 @@ input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12p
   </div>
 </main>
 
-<!-- câmera -->
+<!-- foto da trena -->
+<input type="file" id="photoIn" accept="image/*" capture="environment" class="hidden">
+<input type="file" id="galleryIn" accept="image/*" class="hidden">
 <div id="cam" class="hidden">
   <div id="camStage">
-    <video id="video" playsinline muted autoplay></video>
-    <div id="box"><div class="hint">Enquadre só o número principal</div></div>
+    <img id="photo" alt="Foto da trena">
+    <div id="noPhoto">Tire a foto da tela da trena<br><span class="small">(a câmera do celular abre sozinha)</span></div>
+    <div id="box" class="hidden"><div class="hint">Medidas da tela</div><div class="handle" aria-label="Redimensionar"></div></div>
     <div id="camTop"><div class="t" id="camTitle">Largura</div><button id="btnCamClose">Fechar</button></div>
     <div id="procWrap" class="hidden"><canvas id="procCanvas"></canvas></div>
   </div>
   <div id="camPanel">
     <div id="measureCtl">
-      <div id="snapWrap" class="hidden"><img id="snapImg" alt="Foto da tela da trena"></div>
       <div id="reading">—</div>
-      <div id="readStatus">Carregando…</div>
+      <div id="readStatus">Tire a foto da tela da trena.</div>
       <div id="chips"></div>
       <div class="row">
-        <button class="btn grow" id="btnRetry">↻ Ler de novo</button>
-        <button class="btn ok grow" id="btnUse" disabled>✓ Usar medidas</button>
+        <button class="btn grow" id="btnNewPhoto">📷 Nova foto</button>
+        <button class="btn grow" id="btnReread">↻ Ler de novo</button>
       </div>
+      <div style="height:8px"></div>
+      <button class="btn ok block" id="btnUse" disabled>✓ Usar medidas</button>
+      <div style="text-align:center;margin-top:6px"><a href="#" id="btnGallery" class="small" style="color:#9fc3e6">escolher foto da galeria</a></div>
     </div>
     <div id="calibCtl" class="hidden">
       <label>O que ler na tela da trena</label>
-      <select id="calMode"><option value="multi">As 4 medidas de uma vez (histórico + última)</option><option value="single">Só a medida principal (uma por vez)</option></select>
-      <div class="grid2">
-        <div><label>Largura do quadro</label><input type="range" id="rgW" min="15" max="100"></div>
-        <div><label>Altura do quadro</label><input type="range" id="rgH" min="5" max="80"></div>
-      </div>
-      <div class="small" style="color:#9fb0c0;margin-top:4px">1) Arraste o quadro amarelo sobre a tela da trena (pode pegar a tela toda). 2) Toque em <b>Capturar</b>. 3) Digite a medida principal (a maior, embaixo) e toque em <b>Auto calibrar</b>.</div>
+      <select id="calMode"><option value="multi">As 4 medidas de uma vez (histórico + última)</option><option value="single">Só a medida principal</option></select>
+      <div class="small" style="color:#9fb0c0;margin-top:6px">1) Tire a foto da tela da trena. 2) Arraste o quadro amarelo sobre as medidas (o canto ◢ muda o tamanho). 3) Digite a medida principal (a maior, embaixo) e toque em <b>Auto calibrar</b>.</div>
       <div class="grid2" style="margin-top:6px">
-        <button class="btn" id="btnCapture">📸 Capturar</button>
+        <button class="btn" id="btnCalPhoto">📷 Tirar foto</button>
         <button class="btn pri" id="btnAutoCal" disabled>Auto calibrar</button>
       </div>
       <label>Medida principal na tela (ex.: 0.380 — o décimo pequeno pode ignorar)</label>
@@ -190,6 +195,7 @@ input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12p
       <details style="margin-bottom:8px"><summary class="small" style="color:#9fb0c0">Ajuste manual</summary>
         <div><label>Canal de cor</label><select id="calChan"><option value="lum">Brilho</option><option value="min">Mínimo (dígito claro sobre cor)</option><option value="max">Máximo (dígito escuro)</option></select></div>
         <label>Ajuste de limiar: <span id="offV">0</span></label><input type="range" id="calOff" min="-60" max="60" step="5">
+        <div style="text-align:center;margin-top:6px"><a href="#" id="btnCalGallery" class="small" style="color:#9fc3e6">usar foto da galeria</a></div>
       </details>
       <div class="row"><button class="btn grow" id="btnCalCancel">Cancelar</button><button class="btn ok grow" id="btnCalSave">Salvar perfil</button></div>
     </div>
