@@ -1,4 +1,14 @@
-# Medição Trena — versão 4 (teste)
+# Medição Trena — versão 5 (teste)
+
+## Correções da versão 5
+- As medidas de cima também são lidas quando a câmera entrega pouca resolução ou os dígitos ficam grudados.
+- A câmera passa a pedir mais resolução.
+- A calibração aprende quantos dígitos a trena mostra. Leitura com dígito faltando é descartada, nunca gravada.
+- A calibração desenha um retângulo em cada medida encontrada: verde = confiável, laranja = duvidosa. Se só achar a principal, ela avisa.
+- Botão **Enviar foto para análise** na calibração: manda a imagem exata que o app está vendo.
+- **Calibre de novo** cada trena depois de atualizar.
+
+## Versão 4
 
 ## Correções da versão 4
 - Lê e grava **as 4 medidas**: a menor vai em destaque e as outras 3 ficam como registro. Nenhuma é mais desmarcada automaticamente; o ⚠ é só um aviso.

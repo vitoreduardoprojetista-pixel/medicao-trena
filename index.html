@@ -186,6 +186,7 @@ input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12p
       <label>Medida principal na tela (ex.: 0.380 — o décimo pequeno pode ignorar)</label>
       <input type="text" id="calExpect" inputmode="decimal" placeholder="0.380">
       <div id="calResult" class="small" style="text-align:center;min-height:34px;margin:8px 0;color:#cfe0ee"></div>
+      <button class="btn block hidden" id="btnDiag" style="margin-bottom:8px">📤 Enviar foto para análise</button>
       <details style="margin-bottom:8px"><summary class="small" style="color:#9fb0c0">Ajuste manual</summary>
         <div><label>Canal de cor</label><select id="calChan"><option value="lum">Brilho</option><option value="min">Mínimo (dígito claro sobre cor)</option><option value="max">Máximo (dígito escuro)</option></select></div>
         <label>Ajuste de limiar: <span id="offV">0</span></label><input type="range" id="calOff" min="-60" max="60" step="5">

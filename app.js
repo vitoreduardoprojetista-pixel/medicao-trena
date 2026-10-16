@@ -430,6 +430,9 @@ function glyphRows(cc) {
         const n = tall.reduce((s, g) => s + Math.max(1, Math.round(g.w / mw)), 0);  // dígitos encostados contam 2
         out.push({ g: tall, Hd, n, ymid: r.cy }); break;
       }
+      // plano B: com a imagem borrada, os dígitos grudam e viram 1 ou 2 blocos largos
+      const wsum = tall.reduce((s, g) => s + g.w, 0);
+      if (tall.length >= 1 && wsum >= 1.5 * Hd) { out.push({ g: tall, Hd, n: null, blob: true, ymid: r.cy }); break; }
     }
   }
   return out;
@@ -457,11 +460,15 @@ function renderRow(cc, row, outH = 80) {
   return c;
 }
 
-function maskPreview(mk) {
+function maskPreview(mk, boxes) {
   const c = document.createElement('canvas'); c.width = mk.W; c.height = mk.H;
   const x = c.getContext('2d'), im = x.createImageData(mk.W, mk.H), o = im.data;
   for (let j = 0, i = 0; j < mk.m.length; j++, i += 4) { const v = mk.m[j] ? 0 : 255; o[i] = o[i + 1] = o[i + 2] = v; o[i + 3] = 255; }
-  x.putImageData(im, 0, 0); return c;
+  x.putImageData(im, 0, 0);
+  // um retângulo em cada linha encontrada: verde = leitura confiável, laranja = duvidosa, vermelho = não leu
+  x.lineWidth = Math.max(2, mk.H / 120);
+  for (const b of boxes || []) { x.strokeStyle = b.ok ? '#1d9a4a' : b.mm ? '#e08a00' : '#d23'; x.strokeRect(b.x0 - 3, b.y0 - 3, b.x1 - b.x0 + 6, b.y1 - b.y0 + 6); }
+  return c;
 }
 
 /* lê a tela: devolve as linhas (de cima para baixo) e qual é a principal (a maior) */
@@ -470,23 +477,40 @@ async function readScreen(crop, prm, wantPreview) {
   const res = await Promise.all(rows.map(async r => {
     const d = await ocr(renderRow(cc, r));
     const digits = (d.text || '').replace(/\D/g, '');
-    const mm = digits.length >= 3 ? parseInt(digits, 10) : null;   // m com 3 casas ou mm: os dígitos já são milímetros
-    const valid = mm != null && mm >= 30 && mm <= 99999;
-    return { digits, n: r.n, Hd: r.Hd, y: r.ymid / cc.H, mm: valid ? mm : null, ok: valid && digits.length === r.n, conf: d.confidence || 0 };
+    return {
+      digits, n: r.n, blob: !!r.blob, Hd: r.Hd, y: r.ymid / cc.H, conf: d.confidence || 0,
+      box: { x0: Math.min(...r.g.map(g => g.x0)), x1: Math.max(...r.g.map(g => g.x1)), y0: Math.min(...r.g.map(g => g.y0)), y1: Math.max(...r.g.map(g => g.y1)) }
+    };
   }));
   const hmax = Math.max(0, ...res.map(r => r.Hd));
   res.forEach(r => { r.main = r.Hd === hmax && r.Hd >= 1.2 * Math.min(...res.map(q => q.Hd)) || res.length === 1; });
   // se todas têm o mesmo tamanho, a principal é a última (de baixo)
   if (!res.some(r => r.main) && res.length) res[res.length - 1].main = true;
-  const main = res.find(r => r.main);
-  let out = res.filter(r => r.mm);
+  const mainR = res.find(r => r.main);
+  // quantos dígitos a trena mostra (aprendido na calibração; ex.: 0.474 m -> 4 dígitos)
+  const D = prm.digits || (mainR && mainR.digits.length >= 4 ? mainR.digits.length : 3);
+  for (const r of res) {
+    let dg = r.digits;
+    if (r.blob && dg.length === D + 1 && !(D >= 4 && dg[0] !== '0' && parseInt(dg, 10) >= 10000)) dg = dg.slice(0, D);   // bloco com o décimo de mm grudado
+    // menos dígitos que o normal = algum dígito se perdeu: descarta (nunca grava número errado)
+    const mm = dg.length >= Math.max(3, D) && dg.length <= D + 1 ? parseInt(dg, 10) : null;   // m com 3 casas ou mm: os dígitos já são milímetros
+    const valid = mm != null && mm >= 30 && mm <= 99999;
+    r.mm = valid ? mm : null;
+    r.ok = valid && (r.blob ? (!r.main && dg.length === D) : dg.length === r.n);
+  }
+  // linhas acima da principal (histórico) — no máximo as que a trena mostra
+  const mainIdx = res.indexOf(mainR);
+  let hist = res.slice(0, mainIdx < 0 ? res.length : mainIdx).filter(r => r.mm);
+  const maxHist = Math.max(0, (prm.nRows || 4) - 1); if (hist.length > maxHist) hist = hist.slice(hist.length - maxHist);
+  const main = mainR;
+  let out = hist.concat(main && main.mm ? [main] : []);
   if (!isMulti(prm)) out = main && main.mm ? [main] : [];
   const okRows = out.filter(r => r.ok).length;
   const score = okRows * 100 + (main && main.ok ? 50 : 0) + (out.length ? out.reduce((s, r) => s + r.conf, 0) / out.length : 0);
   // no modo "4 medidas" só está completo quando leu todas as linhas que a trena mostra (aprendido na calibração)
   const need = isMulti(prm) ? (prm.nRows || 4) : 1;
   const perfect = !!(main && main.ok) && out.length >= need && out.every(r => r.ok);
-  return { rows: res, vals: out, main, okRows, score, perfect, preview: wantPreview ? maskPreview(mk) : null };
+  return { rows: res, vals: out, main, okRows, score, perfect, preview: wantPreview ? maskPreview(mk, res.map(r => Object.assign({ ok: r.ok, mm: r.mm }, r.box))) : null };
 }
 
 function parseExpected(str) {
@@ -519,7 +543,7 @@ async function openCam(opts) {
   history.pushState({ cam: 1 }, '');
   resetMeasureUi(); placeBox();
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: false });
     const v = $('#video'); v.srcObject = stream; await v.play();
     try {
       const tr = stream.getVideoTracks()[0], cap = tr.getCapabilities ? tr.getCapabilities() : {};
@@ -674,6 +698,7 @@ function startCalib(p) {
   $('#rgW').value = Math.round(prm.box.w * 100); $('#rgH').value = Math.round(prm.box.h * 100);
   $('#calChan').value = prm.chan || 'lum'; $('#calOff').value = prm.off || 0; $('#offV').textContent = prm.off || 0;
   $('#calExpect').value = ''; $('#btnAutoCal').disabled = true; $('#btnCapture').textContent = '📸 Capturar';
+  $('#btnDiag').classList.add('hidden');
   $('#btnCalSave').disabled = !p.calibrado;
 }
 function resizeBox(k, v) {
@@ -689,9 +714,24 @@ $('#calOff').oninput = e => { $('#offV').textContent = e.target.value; camState 
 $('#btnCalCancel').onclick = () => closeCam();
 $('#btnCalSave').onclick = () => { const s = camState; if (!s) return; const prm = JSON.parse(JSON.stringify(s.prm)); closeCam(); s.onSave(prm); };
 
+$('#btnDiag').onclick = async () => {
+  const s = camState; if (!s || !s.snap) return;
+  const blob = c => new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+  const files = [new File([await blob(s.snap)], 'trena-recorte.jpg', { type: 'image/jpeg' })];
+  if (s.snapFull) files.push(new File([await blob(s.snapFull)], `trena-camera-${s.snapRes}.jpg`, { type: 'image/jpeg' }));
+  if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, title: 'Foto da trena para análise' }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }
+};
+
 $('#btnCapture').onclick = () => {
   const s = camState, v = $('#video'); if (!s || !v.videoWidth) return;
   s.snap = grabCrop(v, s.prm.box);
+  // cópia em resolução original, para diagnóstico
+  const k = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+  s.snapFull = document.createElement('canvas'); s.snapFull.width = Math.round(v.videoWidth * k); s.snapFull.height = Math.round(v.videoHeight * k);
+  s.snapFull.getContext('2d').drawImage(v, 0, 0, s.snapFull.width, s.snapFull.height);
+  s.snapRes = `${v.videoWidth}×${v.videoHeight}`;
+  $('#btnDiag').classList.remove('hidden');
   const pc = $('#procCanvas'); pc.width = s.snap.width; pc.height = s.snap.height; pc.getContext('2d').drawImage(s.snap, 0, 0);
   $('#procWrap').classList.remove('hidden');
   $('#btnCapture').textContent = '📸 Capturar de novo'; $('#btnAutoCal').disabled = false;
@@ -720,13 +760,17 @@ $('#btnAutoCal').onclick = async () => {
   if (!best || !best.r.vals.length) { $('#calResult').textContent = 'Não consegui ler. Ajuste o quadro para cobrir as medidas, capture de novo e tente outra vez.'; return; }
   Object.assign(s.prm, best.c);
   // quantas medidas esta trena mostra: só aprende quando a calibração acertou
-  if (isMulti(s.prm) && (best.hit || (expected == null && best.r.perfect))) s.prm.nRows = Math.max(1, best.r.vals.length);
+  if (isMulti(s.prm) && best.r.vals.length >= 2 && (best.hit || (expected == null && best.r.perfect))) s.prm.nRows = Math.max(1, best.r.vals.length);
+  if (best.r.main && best.r.main.ok && (best.hit || expected == null)) s.prm.digits = best.r.main.digits.length;
   $('#calChan').value = best.c.chan; $('#calOff').value = best.c.off; $('#offV').textContent = best.c.off;
   const r = best.r, others = r.vals.filter(v => !v.main).map(v => v.mm + (v.ok ? '' : '?'));
   const main = r.main && r.main.mm ? r.main.mm + (r.main.ok ? '' : '?') : '—';
-  let msg = (expected != null ? (best.hit ? '✓ Calibrado! ' : `⚠ Não achei ${expected} como medida principal. Melhor ajuste: `) : 'Melhor ajuste: ');
-  msg += `principal ${main}` + (others.length ? ` · anteriores ${others.join(' · ')}` : '') +
-    (isMulti(s.prm) ? ` (${r.vals.length} medidas na tela)` : '') + '. Confira e toque em Salvar.';
+  let msg = (expected != null ? (best.hit ? '✓ Principal correta. ' : `⚠ Não achei ${expected} como medida principal. Melhor ajuste: `) : 'Melhor ajuste: ');
+  msg += `principal ${main}` + (others.length ? ` · anteriores ${others.join(' · ')}` : '') + '.';
+  if (isMulti(s.prm) && r.vals.length < 2)
+    msg += ' ⚠ As medidas de cima NÃO foram lidas. Aproxime a câmera da tela da trena, evite reflexo e capture de novo. Se continuar, toque em "Enviar foto para análise".';
+  else msg += (isMulti(s.prm) ? ` (${r.vals.length} medidas na tela)` : '') + ' Confira os retângulos na imagem e toque em Salvar.';
+  msg += ` [câmera ${s.snapRes}]`;
   $('#calResult').textContent = msg;
   const pc = $('#procCanvas'); pc.width = r.preview.width; pc.height = r.preview.height; pc.getContext('2d').drawImage(r.preview, 0, 0);
   $('#btnCalSave').disabled = false;
