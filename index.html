@@ -36,8 +36,21 @@ main{padding:14px 14px 110px;max-width:760px;margin:0 auto}
 .list-item{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
 .list-item:first-child{border-top:0}
 .tag{display:inline-block;background:var(--chip);color:var(--pri);border-radius:8px;padding:2px 8px;font-weight:700;font-size:14px}
-.desc{font-size:13px;color:var(--muted);margin:6px 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
-.desc.open{-webkit-line-clamp:unset;display:block}
+.tag.big{font-size:20px;padding:4px 12px}
+#pager{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+#pager::-webkit-scrollbar{display:none}
+.pg{flex:none;border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;font-weight:700;color:var(--ink);min-height:40px}
+.pg.ok{background:#e6f4ec;border-color:#bfe2cd;color:var(--ok)}
+.pg.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.croqui{margin:10px 0;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+.croqui img{max-width:100%;max-height:240px}
+.descfull{font-size:14px;line-height:1.45;margin:8px 0}
+.info{font-size:13px;color:var(--muted);display:grid;gap:2px;margin-bottom:6px}
+.btn.sm{min-height:40px;padding:6px 12px;font-size:14px}
+#snapWrap{text-align:center;margin-bottom:6px}
+#snapWrap img{max-width:100%;max-height:120px;border-radius:8px;border:2px solid #3ee07a}
+.chipR.tg{font-size:17px;padding:8px 14px;cursor:pointer}
+.chipR.off{opacity:.45;text-decoration:line-through}
 .unit{border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
 .unit h4{margin:0 0 8px;font-size:15px}
 .fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -72,7 +85,6 @@ main{padding:14px 14px 110px;max-width:760px;margin:0 auto}
 #chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0;min-height:30px}
 .chipR{background:#26313d;border-radius:20px;padding:4px 10px;font-size:14px;display:flex;align-items:center;gap:6px}
 .chipR.min{background:#1d8a4a}
-.chipR[data-tg]{font-size:17px;padding:8px 14px;cursor:pointer}
 .chipR button{background:none;border:0;color:#fff;opacity:.7;font-size:15px;padding:0 2px}
 #camPanel .btn{min-height:52px}
 #procWrap{position:absolute;right:10px;bottom:10px;background:#fff;border-radius:8px;padding:4px;z-index:3;max-width:45%}
@@ -116,9 +128,11 @@ input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12p
 
 <main id="viewObra" class="hidden">
   <div class="card" id="obraHead"></div>
-  <div id="itemsList"></div>
+  <div id="pager"></div>
+  <div id="itemPage"></div>
   <div class="fab">
-    <button class="btn pri block" id="btnExport">Gerar PDF preenchido</button>
+    <button class="btn grow" id="btnPrev">◀ Anterior</button>
+    <button class="btn pri grow" id="btnNext">Próximo ▶</button>
   </div>
 </main>
 
@@ -145,35 +159,32 @@ input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12p
   </div>
   <div id="camPanel">
     <div id="measureCtl">
+      <div id="snapWrap" class="hidden"><img id="snapImg" alt="Foto da tela da trena"></div>
       <div id="reading">—</div>
       <div id="readStatus">Carregando…</div>
       <div id="chips"></div>
       <div class="row">
-        <button class="btn grow" id="btnAddRead" disabled>＋ Adicionar leitura</button>
-        <button class="btn ok grow" id="btnDone">Concluir</button>
+        <button class="btn grow" id="btnRetry">↻ Ler de novo</button>
+        <button class="btn ok grow" id="btnUse" disabled>✓ Usar medidas</button>
       </div>
     </div>
     <div id="calibCtl" class="hidden">
       <label>O que ler na tela da trena</label>
       <select id="calMode"><option value="multi">As 4 medidas de uma vez (histórico + última)</option><option value="single">Só a medida principal (uma por vez)</option></select>
       <div class="grid2">
-        <div><label>Largura do quadro</label><input type="range" id="rgW" min="20" max="95"></div>
-        <div><label>Altura do quadro</label><input type="range" id="rgH" min="5" max="50"></div>
+        <div><label>Largura do quadro</label><input type="range" id="rgW" min="15" max="100"></div>
+        <div><label>Altura do quadro</label><input type="range" id="rgH" min="5" max="80"></div>
       </div>
-      <div class="muted small" style="color:#9fb0c0">Arraste o quadro amarelo sobre as medidas (no modo "só a principal", cubra só o número grande). Digite o valor da <b>medida principal</b> (a maior, embaixo) e toque em Auto calibrar.</div>
-      <div class="grid2">
-        <div><label>Medida principal na tela</label><input type="text" id="calExpect" inputmode="decimal" placeholder="ex.: 0.474"></div>
-        <div><label>Unidade do visor</label>
-          <select id="calUnit"><option value="m">metros (0.474 m)</option><option value="cm">centímetros</option><option value="mm">milímetros</option></select></div>
+      <div class="small" style="color:#9fb0c0;margin-top:4px">1) Arraste o quadro amarelo sobre a tela da trena (pode pegar a tela toda). 2) Toque em <b>Capturar</b>. 3) Digite a medida principal (a maior, embaixo) e toque em <b>Auto calibrar</b>.</div>
+      <div class="grid2" style="margin-top:6px">
+        <button class="btn" id="btnCapture">📸 Capturar</button>
+        <button class="btn pri" id="btnAutoCal" disabled>Auto calibrar</button>
       </div>
-      <div style="height:8px"></div>
-      <button class="btn pri block" id="btnAutoCal">Auto calibrar</button>
-      <div id="calResult" class="small" style="text-align:center;min-height:18px;margin:6px 0;color:#cfe0ee"></div>
+      <label>Medida principal na tela (ex.: 0.380 — o décimo pequeno pode ignorar)</label>
+      <input type="text" id="calExpect" inputmode="decimal" placeholder="0.380">
+      <div id="calResult" class="small" style="text-align:center;min-height:34px;margin:8px 0;color:#cfe0ee"></div>
       <details style="margin-bottom:8px"><summary class="small" style="color:#9fb0c0">Ajuste manual</summary>
-        <div class="grid2">
-          <div><label>Canal de cor</label><select id="calChan"><option value="min">Mínimo (dígito claro)</option><option value="lum">Brilho</option><option value="max">Máximo (dígito escuro)</option></select></div>
-          <div><label>Polaridade</label><select id="calPol"><option value="auto">Automática</option><option value="light">Dígito claro</option><option value="dark">Dígito escuro</option></select></div>
-        </div>
+        <div><label>Canal de cor</label><select id="calChan"><option value="lum">Brilho</option><option value="min">Mínimo (dígito claro sobre cor)</option><option value="max">Máximo (dígito escuro)</option></select></div>
         <label>Ajuste de limiar: <span id="offV">0</span></label><input type="range" id="calOff" min="-60" max="60" step="5">
       </details>
       <div class="row"><button class="btn grow" id="btnCalCancel">Cancelar</button><button class="btn ok grow" id="btnCalSave">Salvar perfil</button></div>

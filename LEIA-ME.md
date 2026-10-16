@@ -1,4 +1,16 @@
-# Medição Trena — versão 2 (teste)
+# Medição Trena — versão 3 (teste)
+
+## Novo na versão 3
+- **Funciona com trenas diferentes** (ex.: GLM 50 C, com dígito claro em tela colorida, e GLM 80, com dígito escuro em tela clara). As 3 medidas de cima e a principal, maior, embaixo, são identificadas pelo tamanho.
+- O **décimo de milímetro** (número pequeno ao lado), o ponto, o "m", os ícones e o ângulo são ignorados.
+- **Calibração por foto:** enquadre, toque em **Capturar**, digite a medida principal e toque em **Auto calibrar**. Nada some da tela enquanto você confere.
+- **Medição mais rápida:** congela sozinha na primeira leitura confiável e mostra a foto da tela para conferir. Leituras duvidosas aparecem com "?".
+- **Um item por página**, na ordem da planilha, com croqui, descrição completa, vidro, tratamento e linha. Use Anterior/Próximo ou os botões A1, A2… no topo.
+- **Localização** já vem preenchida com o que estiver na planilha, e dá para alterar.
+- **PDF gerado:** a menor medida em destaque e as outras em letra pequena logo acima, como registro.
+
+> Ao atualizar da v2, **calibre de novo cada trena** (Trenas → Calibrar).
+
 
 ## Novo na versão 2: as 4 medidas de uma vez
 A trena Bosch mostra na tela a última medida (grande, embaixo) e as 3 anteriores. Agora o app lê **as 4 de uma só vez**:

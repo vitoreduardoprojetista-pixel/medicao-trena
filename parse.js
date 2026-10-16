@@ -58,9 +58,11 @@
       if (!byNum.has(num)) { const o = { item: num, tipo: tipo || '', qtde: 0, desc: '', vidro: '', proj: {}, units: [] }; byNum.set(num, o); out.items.push(o); }
       const o = byNum.get(num); if (tipo && !o.tipo) o.tipo = tipo; return o;
     };
-    let descBuf = [], pendingDesc = '', pendingVidro = '';
+    let descBuf = [], pendingDesc = '', pendingVidro = '', pendingCroqui = null, pendingInfo = {};
+    const locText = ln => txt(ln.items.filter(i => cx(i) > cols.locL && cx(i) < cols.locR));
 
     pages.forEach((p, pi) => {
+      const imgs = (p.images || []).filter(im => im.x0 < DESC_X && (im.x1 - im.x0) > 40 && (im.y1 - im.y0) > 30);
       const lines = groupLines(p.items, 2);
       for (const ln of lines) {
         const all = txt(ln.items);
@@ -78,7 +80,7 @@
 
         if (first.x < 75 && /^\d+\/\d+$/.test(f)) {                 // linha de unidade (1/2, 2/2 ...)
           const num = rowNum(); if (num == null) continue;
-          getItem(num, rowTipo()).units.push({ label: f, page: pi, y: first.y });
+          getItem(num, rowTipo()).units.push({ label: f, page: pi, y: first.y, loc0: locText(ln) });
           descBuf = [];
           continue;
         }
@@ -89,21 +91,34 @@
           if (q) it.qtde = parseInt(q.str, 10);
           const nums = ln.items.filter(i => /^\d+([.,]\d+)?$/.test(i.str.trim()) && cx(i) > cols.locR);
           for (const k of ['L', 'H', 'cL', 'cH']) { const n = nearest(nums, cols[k], 18); if (n) it.proj[k] = parseInt(n.str, 10); }
-          if (pendingDesc && !it.desc) { it.desc = pendingDesc; it.vidro = pendingVidro; }
-          pendingDesc = ''; pendingVidro = ''; descBuf = [];
+          if (pendingDesc && !it.desc) { it.desc = pendingDesc; it.vidro = pendingVidro; Object.assign(it, pendingInfo); }
+          if (pendingCroqui && !it.croqui) it.croqui = pendingCroqui;
+          it.loc = locText(ln);
+          pendingDesc = ''; pendingVidro = ''; pendingCroqui = null; pendingInfo = {}; descBuf = [];
           continue;
         }
         if (first.x < 40) { descBuf = []; continue; }                  // cabeçalho/rodapé de largura total
         const right = ln.items.filter(i => i.x >= DESC_X);
         if (!right.length) continue;
         const rt = txt(right);
-        if (/^Vidros?:/.test(rt)) { pendingDesc = descBuf.join(' ').trim(); pendingVidro = rt.replace(/^Vidros?:\s*/, ''); descBuf = []; continue; }
+        if (/^Vidros?:/.test(rt)) {
+          pendingDesc = descBuf.join(' ').trim(); pendingVidro = rt.replace(/^Vidros?:\s*/, ''); descBuf = [];
+          // croqui = imagem à esquerda mais próxima desta linha
+          let best = null, bd = 120;
+          for (const im of imgs) { const d = Math.abs((im.y0 + im.y1) / 2 - ln.y); if (d < bd) { bd = d; best = im; } }
+          pendingCroqui = best ? { page: pi, x0: best.x0, y0: best.y0, x1: best.x1, y1: best.y1 } : null;
+          continue;
+        }
+        let mm;
+        if ((mm = rt.match(/^Tratamento:\s*(.*)$/))) { pendingInfo.trat = mm[1]; continue; }
+        if ((mm = rt.match(/^Linha:\s*(.*)$/))) { pendingInfo.linha = mm[1]; continue; }
+        if ((mm = rt.match(/^Obs:\s*(.*)$/))) { pendingInfo.obs = mm[1]; continue; }
         if (LABELS.some(l => rt.startsWith(l))) continue;
         if (/^\d+\s*\/\s*\d+$/.test(rt)) continue;                    // número de página
         descBuf.push(rt);
       }
     });
-    out.items.sort((a, b) => a.item - b.item);
+    // mantém a ordem em que os itens aparecem na planilha
     for (const it of out.items) { if (!it.qtde) it.qtde = it.units.length; }
     return out;
   }
