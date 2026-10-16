@@ -47,6 +47,9 @@ main{padding:14px 14px 110px;max-width:760px;margin:0 auto}
 .descfull{font-size:14px;line-height:1.45;margin:8px 0}
 .info{font-size:13px;color:var(--muted);display:grid;gap:2px;margin-bottom:6px}
 .btn.sm{min-height:40px;padding:6px 12px;font-size:14px}
+#dlg{position:fixed;inset:0;background:rgba(10,20,30,.55);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}
+.dlgBox{background:#fff;color:var(--ink);border-radius:16px;padding:18px;width:100%;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.dlgBox .big{font-size:22px;font-weight:800;color:var(--pri)}
 #snapWrap{text-align:center;margin-bottom:6px}
 #snapWrap img{max-width:100%;max-height:120px;border-radius:8px;border:2px solid #3ee07a}
 .chipR.tg{font-size:17px;padding:8px 14px;cursor:pointer}
@@ -188,6 +191,17 @@ input.txt{width:100%;padding:12px;border:1px solid var(--line);border-radius:12p
         <label>Ajuste de limiar: <span id="offV">0</span></label><input type="range" id="calOff" min="-60" max="60" step="5">
       </details>
       <div class="row"><button class="btn grow" id="btnCalCancel">Cancelar</button><button class="btn ok grow" id="btnCalSave">Salvar perfil</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="dlg" class="hidden" role="dialog" aria-modal="true">
+  <div class="dlgBox">
+    <div id="dlgTitle" style="font-weight:800;font-size:18px;margin-bottom:6px">Substituir medida?</div>
+    <div id="dlgMsg" style="font-size:15px;line-height:1.45"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn grow" id="dlgNo">Manter a atual</button>
+      <button class="btn ok grow" id="dlgYes">Substituir</button>
     </div>
   </div>
 </div>

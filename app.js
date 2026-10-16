@@ -237,6 +237,15 @@ function setMeasure(u, f, reads) {
   u.v[f] = { val: Math.min(...reads), reads };
 }
 
+/* caixa de diálogo de confirmação */
+function askConfirm(html) {
+  return new Promise(res => {
+    $('#dlgMsg').innerHTML = html; $('#dlg').classList.remove('hidden');
+    const done = v => { $('#dlg').classList.add('hidden'); $('#dlgYes').onclick = $('#dlgNo').onclick = null; res(v); };
+    $('#dlgYes').onclick = () => done(true); $('#dlgNo').onclick = () => done(false);
+  });
+}
+
 /* eventos */
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-open],[data-del],[data-cam],[data-cm],[data-prof],[data-pcal],[data-pdel],[data-pg],#btnExport');
@@ -248,14 +257,21 @@ document.addEventListener('click', e => {
   else if (t.dataset.cm) { unitByKey(t.dataset.cm).u.showCm = true; scheduleSave(); renderObra(); }
   else if (t.dataset.cam) {
     const { it, u } = unitByKey(t.dataset.cam), f = t.dataset.f;
-    const prm = activeProfile();
     openCam({
       mode: 'measure', title: `${it.tipo} ${u.label} · ${FIELDS[f]}`,
-      onDone: reads => {
-        // modo "4 medidas" substitui; modo "só a principal" acumula leituras
-        const prev = (u.v[f] && u.v[f].reads) || [];
-        setMeasure(u, f, isMulti(prm) ? reads : prev.concat(reads));
+      onDone: async reads => {
+        // a captura autorizada sempre substitui; se já havia medida, pergunta antes
+        const old = u.v[f];
+        if (old && old.val) {
+          const nova = Math.min(...reads), oldRest = others(old), newRest = reads.slice(); newRest.splice(newRest.indexOf(nova), 1);
+          const ok = await askConfirm(`<b>${esc(it.tipo)} ${esc(u.label)} · ${FIELDS[f]}</b> já tem medida.<br><br>
+            Atual: <span class="big">${old.val}</span>${oldRest.length ? ` <span class="muted">(registro ${oldRest.join(' · ')})</span>` : ''}<br>
+            Nova: <span class="big">${nova}</span>${newRest.length ? ` <span class="muted">(registro ${newRest.join(' · ')})</span>` : ''}`);
+          if (!ok) { toast('Medida atual mantida.'); return; }
+        }
+        setMeasure(u, f, reads);
         scheduleSave(); renderObra();
+        toast(`${FIELDS[f]}: ${u.v[f].val} mm gravada`);
       }
     });
   }
@@ -456,7 +472,7 @@ async function readScreen(crop, prm, wantPreview) {
     const digits = (d.text || '').replace(/\D/g, '');
     const mm = digits.length >= 3 ? parseInt(digits, 10) : null;   // m com 3 casas ou mm: os dígitos já são milímetros
     const valid = mm != null && mm >= 30 && mm <= 99999;
-    return { digits, n: r.n, Hd: r.Hd, mm: valid ? mm : null, ok: valid && digits.length === r.n, conf: d.confidence || 0 };
+    return { digits, n: r.n, Hd: r.Hd, y: r.ymid / cc.H, mm: valid ? mm : null, ok: valid && digits.length === r.n, conf: d.confidence || 0 };
   }));
   const hmax = Math.max(0, ...res.map(r => r.Hd));
   res.forEach(r => { r.main = r.Hd === hmax && r.Hd >= 1.2 * Math.min(...res.map(q => q.Hd)) || res.length === 1; });
@@ -467,7 +483,9 @@ async function readScreen(crop, prm, wantPreview) {
   if (!isMulti(prm)) out = main && main.mm ? [main] : [];
   const okRows = out.filter(r => r.ok).length;
   const score = okRows * 100 + (main && main.ok ? 50 : 0) + (out.length ? out.reduce((s, r) => s + r.conf, 0) / out.length : 0);
-  const perfect = !!(main && main.ok) && out.length > 0 && out.every(r => r.ok);
+  // no modo "4 medidas" só está completo quando leu todas as linhas que a trena mostra (aprendido na calibração)
+  const need = isMulti(prm) ? (prm.nRows || 4) : 1;
+  const perfect = !!(main && main.ok) && out.length >= need && out.every(r => r.ok);
   return { rows: res, vals: out, main, okRows, score, perfect, preview: wantPreview ? maskPreview(mk) : null };
 }
 
@@ -534,7 +552,7 @@ $('#btnCamClose').onclick = () => closeCam();
 /* ---- medição: lê sozinho e congela no primeiro resultado confiável ---- */
 function resetMeasureUi() {
   const s = camState; if (!s) return;
-  s.sel = null; s.frozen = false; s.best = null; s.t0 = Date.now();
+  s.sel = null; s.frozen = false; s.acc = []; s.t0 = Date.now();
   $('#box').classList.remove('stable'); $('#snapWrap').classList.add('hidden');
   $('#reading').innerHTML = '—'; $('#chips').innerHTML = '';
   $('#btnUse').disabled = true; $('#btnUse').textContent = '✓ Usar medidas';
@@ -551,14 +569,34 @@ async function runLoop(id) {
       const r = await readScreen(crop, s.prm);
       if (camState !== s || s.loop !== id || s.frozen) break;
       r.crop = crop;
-      if (!s.best || r.score > s.best.score) s.best = r;
-      const waited = Date.now() - s.t0;
       if (r.perfect) { freeze(r); break; }
-      if (waited > 5000 && s.best.main && s.best.main.mm) { freeze(s.best); break; }   // depois de 5 s usa a melhor leitura
-      $('#reading').innerHTML = r.vals.length ? `<span style="opacity:.45;font-size:24px">${r.vals.map(x => x.mm).join(' · ')}</span>` : '—';
-      setStatus(r.vals.length ? 'Lendo… segure firme' : 'Enquadre as medidas da tela no quadro');
+      // soma as linhas lidas em quadros diferentes (cada linha pela posição na tela)
+      const acc = accumulate(s, r);
+      if (acc.perfect) { freeze(acc); break; }
+      const waited = Date.now() - s.t0;
+      if (waited > 6000 && acc.main && acc.main.mm) { freeze(acc); break; }   // depois de 6 s usa o que conseguiu
+      const got = acc.vals.filter(v => v.ok).length, need = isMulti(s.prm) ? (s.prm.nRows || 4) : 1;
+      $('#reading').innerHTML = acc.vals.length ? `<span style="opacity:.45;font-size:24px">${acc.vals.map(x => x.mm).join(' · ')}</span>` : '—';
+      setStatus(acc.vals.length ? `Lendo… ${got} de ${need} medidas — segure firme` : 'Enquadre as medidas da tela no quadro');
     } catch (e) { console.warn(e); await sleep(300); }
   }
+}
+
+function accumulate(s, r) {
+  s.acc = s.acc || [];
+  for (const v of r.vals) {
+    const a = s.acc.find(a => Math.abs(a.y - v.y) < 0.07);
+    if (!a) s.acc.push(Object.assign({}, v));
+    else if (v.ok || !a.ok) Object.assign(a, v);     // leitura confiável substitui; duvidosa não estraga uma confiável
+  }
+  s.acc.sort((a, b) => a.y - b.y);
+  // a principal é a de maior tamanho
+  const hmax = Math.max(0, ...s.acc.map(a => a.Hd));
+  s.acc.forEach(a => { a.main = a.Hd >= 0.92 * hmax && hmax >= 1.2 * Math.min(...s.acc.map(q => q.Hd)); });
+  if (!s.acc.some(a => a.main) && s.acc.length) s.acc[s.acc.length - 1].main = true;
+  const main = s.acc.find(a => a.main), need = isMulti(s.prm) ? (s.prm.nRows || 4) : 1;
+  const vals = isMulti(s.prm) ? s.acc.slice() : (main ? [main] : []);
+  return { vals, main, crop: r.crop, perfect: !!(main && main.ok) && vals.length >= need && vals.every(v => v.ok) };
 }
 
 function freeze(r) {
@@ -567,9 +605,10 @@ function freeze(r) {
   $('#box').classList.add('stable');
   const snap = $('#snapImg'); snap.src = r.crop.toDataURL('image/jpeg', 0.8); $('#snapWrap').classList.remove('hidden');
   const ref = r.main && r.main.mm ? r.main.mm : r.vals[r.vals.length - 1].mm;
-  s.sel = r.vals.map(v => ({ mm: v.mm, main: v.main, ok: v.ok, far: Math.abs(v.mm - ref) > DIF_MAX }));
-  s.sel.forEach(v => { v.on = v.ok && !v.far; });
-  if (!s.sel.some(v => v.on) && s.sel.length) { const m = s.sel.find(v => v.main) || s.sel[s.sel.length - 1]; m.on = true; }
+  // todas as medidas lidas entram marcadas; ⚠ e ? são só avisos (você desmarca se quiser)
+  s.sel = r.vals.map(v => ({ mm: v.mm, main: v.main, ok: v.ok, far: Math.abs(v.mm - ref) > DIF_MAX, on: true }));
+  const need = isMulti(s.prm) ? (s.prm.nRows || 4) : 1;
+  s.missing = Math.max(0, need - s.sel.length);
   renderSel();
 }
 
@@ -578,9 +617,10 @@ function renderSel() {
   const on = s.sel.filter(v => v.on).map(v => v.mm), min = on.length ? Math.min(...on) : null;
   $('#reading').innerHTML = min ? `${min}<span class="u">mm${on.length > 1 ? ' (menor)' : ''}</span>` : '—';
   const warn = [];
-  if (s.sel.some(v => v.far)) warn.push(`⚠ = mais de ${DIF_MAX} mm de diferença da última (pode ser de outro vão)`);
+  if (s.missing) warn.push(`Li ${s.sel.length} de ${s.sel.length + s.missing} medidas — toque em "Ler de novo" para tentar todas`);
+  if (s.sel.some(v => v.far)) warn.push(`⚠ = mais de ${DIF_MAX} mm de diferença da última`);
   if (s.sel.some(v => !v.ok)) warn.push('? = leitura duvidosa');
-  setStatus((warn.length ? warn.join(' · ') + ' — ' : '') + 'Confira com a foto. Toque para marcar/desmarcar.');
+  setStatus((warn.length ? warn.join(' · ') + '. ' : '') + 'Confira com a foto. Toque numa medida para desmarcar.');
   $('#chips').innerHTML = s.sel.map((v, i) => `<span class="chipR tg ${v.on ? (v.mm === min ? 'min' : '') : 'off'}" data-tg="${i}">
     ${v.far ? '⚠ ' : ''}${v.ok ? '' : '? '}${v.mm}${v.main ? ' <small>(última)</small>' : ''}</span>`).join('');
   $('#btnUse').disabled = !on.length;
@@ -679,11 +719,14 @@ $('#btnAutoCal').onclick = async () => {
   s.autoBusy = false; $('#btnAutoCal').disabled = false; $('#btnCapture').disabled = false;
   if (!best || !best.r.vals.length) { $('#calResult').textContent = 'Não consegui ler. Ajuste o quadro para cobrir as medidas, capture de novo e tente outra vez.'; return; }
   Object.assign(s.prm, best.c);
+  // quantas medidas esta trena mostra: só aprende quando a calibração acertou
+  if (isMulti(s.prm) && (best.hit || (expected == null && best.r.perfect))) s.prm.nRows = Math.max(1, best.r.vals.length);
   $('#calChan').value = best.c.chan; $('#calOff').value = best.c.off; $('#offV').textContent = best.c.off;
   const r = best.r, others = r.vals.filter(v => !v.main).map(v => v.mm + (v.ok ? '' : '?'));
   const main = r.main && r.main.mm ? r.main.mm + (r.main.ok ? '' : '?') : '—';
   let msg = (expected != null ? (best.hit ? '✓ Calibrado! ' : `⚠ Não achei ${expected} como medida principal. Melhor ajuste: `) : 'Melhor ajuste: ');
-  msg += `principal ${main}` + (others.length ? ` · anteriores ${others.join(' · ')}` : '') + '. Confira e toque em Salvar.';
+  msg += `principal ${main}` + (others.length ? ` · anteriores ${others.join(' · ')}` : '') +
+    (isMulti(s.prm) ? ` (${r.vals.length} medidas na tela)` : '') + '. Confira e toque em Salvar.';
   $('#calResult').textContent = msg;
   const pc = $('#procCanvas'); pc.width = r.preview.width; pc.height = r.preview.height; pc.getContext('2d').drawImage(r.preview, 0, 0);
   $('#btnCalSave').disabled = false;

@@ -1,4 +1,12 @@
-# Medição Trena — versão 3 (teste)
+# Medição Trena — versão 4 (teste)
+
+## Correções da versão 4
+- Lê e grava **as 4 medidas**: a menor vai em destaque e as outras 3 ficam como registro. Nenhuma é mais desmarcada automaticamente; o ⚠ é só um aviso.
+- A leitura espera completar todas as medidas da tela e soma os quadros da câmera até conseguir. Na tela aparece "Lendo… 3 de 4".
+- A captura que você autoriza **sempre substitui** a medida do campo. Se já houver uma medida, aparece uma caixa perguntando se deseja substituir, com a atual e a nova lado a lado.
+- A calibração aprende quantas medidas a sua trena mostra. **Calibre de novo** cada trena depois de atualizar.
+
+## Versão 3
 
 ## Novo na versão 3
 - **Funciona com trenas diferentes** (ex.: GLM 50 C, com dígito claro em tela colorida, e GLM 80, com dígito escuro em tela clara). As 3 medidas de cima e a principal, maior, embaixo, são identificadas pelo tamanho.
