@@ -46,6 +46,15 @@
   <button id="btnConectar">Conectar trena</button>
 </div>
 <input type="file" id="arquivo" accept="application/pdf">
+<details id="painelTuya" class="item" style="margin-bottom:10px">
+  <summary style="font-size:15px;font-weight:600">Chave da trena D5T (Tuya) <span id="tuyaEstado" style="font-weight:400;color:#6b7280"></span></summary>
+  <div style="font-size:13px;color:#6b7280;margin:6px 0">Cole aqui a resposta da Tuya com device_id, local_key e uuid (pode colar o texto inteiro).</div>
+  <textarea id="tuyaTexto" rows="4" placeholder='{"id": "...", "local_key": "...", "uuid": "..."}'></textarea>
+  <div class="linha" style="margin-top:8px">
+    <button id="btnTuyaSalvar" class="ok">Salvar chave</button>
+    <button id="btnTuyaCalib" class="sec">Refazer calibração</button>
+  </div>
+</details>
 <div id="obra"></div>
 <div id="itens"></div>
 <div class="linha" id="acoesFim" style="display:none">
@@ -67,6 +76,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="tuya.js"></script>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -349,7 +359,11 @@ $('btnConectar').onclick = async () => {
     status('Conectando em ' + device.name + '...');
     const server = await device.gatt.connect();
 
-    // 1) Protocolos conhecidos
+    // 1) Chip Tuya (D5T nova): dados criptografados, precisa da chave
+    const tuyaNot = await tentar(server, Tuya.SERV, Tuya.NOTIFY);
+    if (tuyaNot) { await conectarTuya(server, tuyaNot, device.name); return; }
+
+    // 2) Protocolos abertos conhecidos
     let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto';
     if (!car) { car = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); tipo = 'bosch'; }
     if (car) {
@@ -360,7 +374,7 @@ $('btnConectar').onclick = async () => {
       return;
     }
 
-    // 2) Protocolo desconhecido: escuta tudo que a trena oferece e mostra no registro
+    // 3) Protocolo desconhecido: escuta tudo que a trena oferece e mostra no registro
     const servicos = await server.getPrimaryServices().catch(() => []);
     log('Serviços: ' + (servicos.map(sv => nomeUuid(sv.uuid)).join(', ') || 'nenhum da lista'));
     let ouvindo = 0;
@@ -387,6 +401,66 @@ $('btnConectar').onclick = async () => {
     log('Erro: ' + e.name + ' - ' + e.message);
   }
 };
+
+// ---------- Trena Tuya ----------
+function lerJson(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+function gravarJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+function mostrarEstadoTuya() {
+  const c = lerJson('tuya_cred'), m = lerJson('tuya_dp');
+  $('tuyaEstado').textContent = c ? '· chave salva' + (m ? ', calibrada' : '') : '· sem chave';
+}
+$('btnTuyaSalvar').onclick = () => {
+  const c = Tuya.lerCredenciais($('tuyaTexto').value);
+  if (!c.device_id || !c.local_key || !c.uuid) {
+    status('Faltou: ' + ['device_id', 'local_key', 'uuid'].filter(k => !c[k]).join(', ') + '. Confira o texto colado.');
+    return;
+  }
+  gravarJson('tuya_cred', c);
+  log('Chave salva: device_id ' + c.device_id + ', uuid ' + c.uuid);
+  status('Chave da trena salva. Agora toque em Conectar trena.');
+  $('tuyaTexto').value = ''; $('painelTuya').open = false; mostrarEstadoTuya();
+};
+$('btnTuyaCalib').onclick = () => { gravarJson('tuya_dp', null); gravarJson('tuya_ignorar', []); mostrarEstadoTuya(); status('Calibração apagada. Na próxima medida o app pergunta de novo.'); };
+mostrarEstadoTuya();
+
+// Descobre qual dado da trena é a distância: na 1ª medida pergunta o valor do visor
+function tuyaParaMm(dps) {
+  const mapa = lerJson('tuya_dp'), ignorar = lerJson('tuya_ignorar') || [];
+  for (const dp of dps) {
+    if (typeof dp.valor !== 'number' && !(dp.tipo === 'STRING' && /\d/.test(dp.valor))) continue;
+    const v = typeof dp.valor === 'number' ? dp.valor : parseFloat(String(dp.valor).replace(',', '.'));
+    if (mapa) { if (dp.id === mapa.id) return Math.round(v * mapa.fator); continue; }
+    if (ignorar.includes(dp.id) || !(v > 0)) continue;
+    const r = prompt(`A trena mandou o número ${v} (dado ${dp.id}). Qual medida aparece no visor, em mm? Deixe em branco se não for a medida.`);
+    if (r === null) return null;
+    const mm = parseInt(String(r).replace(/\D/g, ''), 10);
+    if (!(mm > 0)) { ignorar.push(dp.id); gravarJson('tuya_ignorar', ignorar); continue; }
+    const fator = Math.pow(10, Math.round(Math.log10(mm / v)));
+    if (Math.abs(v * fator - mm) > Math.max(3, mm * 0.02)) { status(`Não bateu: ${v} não parece ser ${mm} mm. Meça de novo.`); return null; }
+    gravarJson('tuya_dp', { id: dp.id, fator }); mostrarEstadoTuya();
+    log(`Calibrado: dado ${dp.id} × ${fator} = mm`);
+    return Math.round(v * fator);
+  }
+  return null;
+}
+
+async function conectarTuya(server, notif, nome) {
+  const cred = lerJson('tuya_cred');
+  if (!cred) { $('painelTuya').open = true; throw new Error('Essa trena usa o chip Tuya. Cole a chave dela em "Chave da trena D5T" e conecte de novo.'); }
+  const escr = await tentar(server, Tuya.SERV, Tuya.WRITE);
+  const t = new Tuya.TuyaTrena(cred, log);
+  t.escrever = p => escr.writeValueWithoutResponse ? escr.writeValueWithoutResponse(p) : escr.writeValue(p);
+  let fila = Promise.resolve();
+  notif.addEventListener('characteristicvaluechanged', ev => {
+    const d = new Uint8Array(ev.target.value.buffer.slice(ev.target.value.byteOffset, ev.target.value.byteOffset + ev.target.value.byteLength));
+    fila = fila.then(() => t.receber(d)).catch(e => log('Tuya erro: ' + e.message));
+  });
+  t.aoReceberDps = dps => { const mm = tuyaParaMm(dps); if (mm) adicionarMedida(mm); };
+  await notif.startNotifications();
+  status('Conectado em ' + nome + '. Fazendo o aperto de mão com a trena...');
+  await t.conectar();
+  status('Trena ' + nome + ' pronta. Toque num campo e meça.' + (lerJson('tuya_dp') ? '' : ' Na 1ª medida o app vai perguntar o valor do visor.'));
+}
 
 $('btnCopiarLog').onclick = async () => {
   try { await navigator.clipboard.writeText($('log').textContent); status('Registro copiado. Cole na conversa com o Claude.'); }

@@ -1,6 +1,6 @@
 /* Cache do app para funcionar sem internet depois da 1ª abertura */
-const CACHE = 'medicao-trena-v7';
-const SHELL = ['./', 'index.html', 'medicao.html', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'medicao-trena-v8';
+const SHELL = ['./', 'index.html', 'medicao.html', 'tuya.js', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
