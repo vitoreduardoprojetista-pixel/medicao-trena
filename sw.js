@@ -1,6 +1,6 @@
 /* Cache do app para funcionar sem internet depois da 1ª abertura */
-const CACHE = 'medicao-trena-v6';
-const SHELL = ['./', 'index.html', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'medicao-trena-v7';
+const SHELL = ['./', 'index.html', 'medicao.html', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -15,7 +15,7 @@ self.addEventListener('fetch', e => {
   if (url.origin === location.origin) {
     // arquivos do app: tenta a versão nova primeiro, usa o cache sem internet
     e.respondWith(fetch(req).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(req, cp)); return r; })
-      .catch(() => caches.match(req).then(r => r || caches.match('index.html'))));
+      .catch(() => caches.match(req).then(r => r || (url.pathname.endsWith('/') ? caches.match('index.html') : Response.error()))));
   } else {
     // bibliotecas e dados do leitor (CDN): cache primeiro
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(r => {
