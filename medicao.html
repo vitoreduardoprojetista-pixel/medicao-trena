@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medição de Esquadrias</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 12px 12px 140px; background: #f4f5f7; color: #1d2330; }
+  h1 { font-size: 19px; margin: 0 0 10px; }
+  button { font-size: 16px; padding: 12px; border: 0; border-radius: 10px; color: #fff; background: #1f6feb; }
+  button.sec { background: #6b7280; }
+  button.ok { background: #16a34a; }
+  .linha { display: flex; gap: 8px; margin-bottom: 8px; }
+  .linha > * { flex: 1; }
+  #status { padding: 8px 10px; border-radius: 8px; background: #fff; margin-bottom: 10px; font-size: 14px; }
+  #obra { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 14px; display: none; }
+  .item { background: #fff; border-radius: 12px; padding: 10px; margin-bottom: 10px; }
+  .item h2 { font-size: 17px; margin: 0; }
+  .item .loc { font-size: 14px; color: #374151; }
+  .item .desc { font-size: 12px; color: #6b7280; margin: 4px 0 6px; }
+  .item .prev { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
+  .un { border-top: 1px solid #e5e7eb; padding-top: 6px; margin-top: 6px; }
+  .un .rot { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .campo { border: 2px solid #d1d5db; border-radius: 10px; padding: 6px 8px; min-height: 58px; }
+  .campo .nome { font-size: 11px; color: #6b7280; }
+  .campo .val { font-size: 22px; font-weight: 700; }
+  .campo .outras { font-size: 11px; color: #6b7280; }
+  .campo.ativo { border-color: #1f6feb; background: #eef4ff; }
+  .campo.cheio .val { color: #15803d; }
+  textarea { width: 100%; font-size: 14px; border: 1px solid #d1d5db; border-radius: 8px; padding: 6px; margin-top: 6px; font-family: inherit; }
+  #barra { position: fixed; left: 0; right: 0; bottom: 0; background: #1d2330; color: #fff; padding: 10px 12px; display: none; }
+  #barra .qual { font-size: 13px; color: #cbd5e1; }
+  #barra .leituras { font-size: 15px; margin: 4px 0 8px; min-height: 20px; }
+  #barra button { padding: 10px; font-size: 15px; }
+  #log { font-family: monospace; font-size: 11px; color: #6b7280; white-space: pre-wrap; margin-top: 12px; max-height: 160px; overflow: auto; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<h1>Medição de Esquadrias</h1>
+<div id="status">1) Abra o caderno de medição (PDF do CEM). 2) Conecte a trena. 3) Toque num campo e meça.</div>
+<div class="linha">
+  <button id="btnAbrir">Abrir caderno (PDF)</button>
+  <button id="btnConectar">Conectar trena</button>
+</div>
+<input type="file" id="arquivo" accept="application/pdf">
+<div id="obra"></div>
+<div id="itens"></div>
+<div class="linha" id="acoesFim" style="display:none">
+  <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
+  <button id="btnZerar" class="sec">Apagar medidas desta obra</button>
+</div>
+<div id="log"></div>
+
+<div id="barra">
+  <div class="qual" id="barraQual"></div>
+  <div class="leituras" id="barraLeituras"></div>
+  <div class="linha">
+    <button id="btnDigitar" class="sec">Digitar</button>
+    <button id="btnDesfazer" class="sec">Apagar última</button>
+    <button id="btnProximo">Próximo ▶</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const $ = id => document.getElementById(id);
+function log(t) { $('log').textContent = t + '\n' + $('log').textContent; }
+function status(t) { $('status').textContent = t; }
+
+// ---------- Estado ----------
+let pdfBytes = null;      // PDF original
+let nomeArquivo = '';
+let obra = {};            // cabeçalho (OS, cliente...)
+let itens = [];           // [{pagina, tipo, qtde, loc, desc, prevL, prevH, cols, obsPos, unidades:[{y}]}]
+let medidas = {};         // chave "i-u-campo" -> [mm, mm, ...]
+let obs = {};             // índice do item -> texto
+let ativo = null;         // {i, u, campo}
+const CAMPOS = [['cmL', 'Contramarco L'], ['cmH', 'Contramarco H'], ['esL', 'Esquadria L'], ['esH', 'Esquadria H']];
+
+function chaveObra() { return 'medicao_' + (obra.os || nomeArquivo); }
+function salvar() {
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs })); } catch (e) { }
+}
+function carregarSalvo() {
+  try {
+    const s = JSON.parse(localStorage.getItem(chaveObra()) || 'null');
+    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; }
+  } catch (e) { }
+}
+
+// ---------- Leitura do caderno (PDF do CEM) ----------
+// Agrupa os textos da página em linhas pela altura (y)
+function emLinhas(items) {
+  const linhas = [];
+  for (const it of items) {
+    const s = it.str.trim();
+    if (!s) continue;
+    const x = it.transform[4], y = it.transform[5];
+    let l = linhas.find(l => Math.abs(l.y - y) < 2.5);
+    if (!l) { l = { y, t: [] }; linhas.push(l); }
+    l.t.push({ s, x, y, w: it.width, h: it.height || 7, cx: x + it.width / 2 });
+  }
+  linhas.forEach(l => l.t.sort((a, b) => a.x - b.x));
+  return linhas.sort((a, b) => b.y - a.y); // de cima para baixo
+}
+
+const ehNumero = s => /^\d+$/.test(s);
+const ehData = s => /^_+\/_+\/_+$/.test(s);
+
+function lerPagina(linhas, pagina) {
+  const resultado = [];
+  const toks = linhas.flatMap(l => l.t);
+  const acima = (lista, y) => lista.filter(t => t.y > y).sort((a, b) => a.y - b.y)[0];
+  // Cada item tem seu cabeçalho de tabela: linha com "L", "H", "DATA" duas vezes (pode haver 2 itens por página)
+  const cabs = linhas.filter(l => l.t.filter(t => t.s === 'DATA').length >= 2 && l.t.filter(t => t.s === 'L').length >= 2);
+  const trats = toks.filter(t => t.s.startsWith('TRATAMENTO'));
+  const obsToks = toks.filter(t => t.s.startsWith('OBS'));
+
+  cabs.forEach((cab, k) => {
+    const Ls = cab.t.filter(t => t.s === 'L'), Hs = cab.t.filter(t => t.s === 'H'), Ds = cab.t.filter(t => t.s === 'DATA');
+    const cols = { cmL: Ls[0].cx, cmH: Hs[0].cx, cmD: Ds[0].cx, esL: Ls[1].cx, esH: Hs[1].cx, esD: Ds[1].cx };
+    const xTipoMax = cols.cmL - 40;
+    const yFim = k + 1 < cabs.length ? cabs[k + 1].y + 60 : -1;  // até o bloco do próximo item
+    const naFaixa = t => t.y < cab.y - 4 && t.y > yFim;
+
+    // Descrição: linhas logo acima de "TRATAMENTO:", alinhadas com ela
+    const trat = acima(trats, cab.y);
+    const desc = trat ? linhas.filter(l => l.y > trat.y + 1 && l.y < trat.y + 30 && Math.abs(l.t[0].x - trat.x) < 6)
+      .sort((a, b) => b.y - a.y).map(l => l.t.map(t => t.s).join(' ')).join(' ') : '';
+    const obsTok = acima(obsToks, cab.y);
+
+    // Linhas da tabela: começam pelo TIPO na coluna da esquerda
+    const tipos = toks.filter(t => naFaixa(t) && t.x < xTipoMax && !ehNumero(t.s)).sort((a, b) => b.y - a.y);
+    let atual = null;
+    for (const tp of tipos) {
+      const daLinha = toks.filter(t => Math.abs(t.y - tp.y) < 5);
+      const nums = daLinha.filter(t => ehNumero(t.s) && Math.abs(t.y - tp.y) < 1.5).sort((a, b) => a.x - b.x);
+      const datas = daLinha.filter(t => ehData(t.s)).sort((a, b) => a.x - b.x);
+      if (nums.length >= 3) {
+        // Linha do item: TIPO QTDE L H DATA LOCALIZAÇÃO L H DATA
+        const loc = daLinha.filter(t => !ehNumero(t.s) && !ehData(t.s) && t.cx > cols.cmD + 30 && t.cx < cols.esL - 25).map(t => t.s).join(' ');
+        atual = {
+          pagina, tipo: tp.s, qtde: +nums[0].s, prevL: nums[1].s, prevH: nums[2].s, loc, desc, cols, unidades: [],
+          obsPos: obsTok ? { x: obsTok.x + obsTok.w + 4, y: obsTok.y } : null
+        };
+        resultado.push(atual);
+      } else if (atual && tp.s === atual.tipo && datas.length) {
+        // Linha em branco: onde vai a medida tirada na obra
+        atual.unidades.push({ y: tp.y, datas: datas.map(d => ({ x: d.x, y: d.y, w: d.w, h: d.h })) });
+      }
+    }
+  });
+  return resultado;
+}
+
+async function abrirPdf(file) {
+  status('Lendo o caderno...');
+  nomeArquivo = file.name;
+  pdfBytes = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
+  itens = []; obra = {};
+  for (let p = 1; p <= doc.numPages; p++) {
+    const pag = await doc.getPage(p);
+    const tc = await pag.getTextContent();
+    const linhas = emLinhas(tc.items);
+    if (!obra.os) {
+      const tudo = linhas.map(l => l.t.map(t => t.s).join(' '));
+      const pega = rot => { const s = tudo.find(x => x.includes(rot)); return s ? s.split(rot)[1].trim() : ''; };
+      obra = { os: pega('O.S.:').split(' ')[0], cliente: pega('CLIENTE:'), obra: pega('OBRA:'), end: pega('ENDEREÇO:') };
+    }
+    itens.push(...lerPagina(linhas, p - 1));
+  }
+  medidas = {}; obs = {}; ativo = null;
+  carregarSalvo();
+  const nUn = itens.reduce((s, i) => s + i.unidades.length, 0);
+  status(`${itens.length} itens e ${nUn} unidades para medir. Conecte a trena e toque num campo.`);
+  log('Itens lidos: ' + itens.map(i => i.tipo).join(', '));
+  desenharTudo();
+}
+
+// ---------- Tela ----------
+function chave(i, u, c) { return `${i}-${u}-${c}`; }
+function menor(lista) { return lista && lista.length ? Math.min(...lista) : null; }
+
+function desenharTudo() {
+  $('obra').style.display = itens.length ? 'block' : 'none';
+  $('obra').innerHTML = `<b>O.S. ${obra.os || ''}</b> · ${obra.cliente || ''}<br>${obra.obra || ''}<br><span style="color:#6b7280">${obra.end || ''}</span>`;
+  $('acoesFim').style.display = itens.length ? 'flex' : 'none';
+  const box = $('itens');
+  box.innerHTML = '';
+  itens.forEach((it, i) => {
+    const d = document.createElement('div');
+    d.className = 'item';
+    let html = `<h2>${it.tipo} <span style="font-weight:400;font-size:13px;color:#6b7280">(qtde ${it.qtde})</span></h2>
+      <div class="loc">${it.loc}</div><div class="desc">${it.desc}</div>
+      <div class="prev">Previsto: ${it.prevL} × ${it.prevH} mm</div>`;
+    it.unidades.forEach((un, u) => {
+      html += `<div class="un">${it.unidades.length > 1 ? `<div class="rot">Unidade ${u + 1}</div>` : ''}<div class="grade">`;
+      for (const [c, nome] of CAMPOS) html += `<div class="campo" id="c-${chave(i, u, c)}" data-i="${i}" data-u="${u}" data-c="${c}"></div>`;
+      html += `</div></div>`;
+    });
+    html += `<textarea rows="1" placeholder="Observação (vai no campo OBS)" data-obs="${i}">${obs[i] || ''}</textarea>`;
+    d.innerHTML = html;
+    box.appendChild(d);
+  });
+  box.querySelectorAll('.campo').forEach(el => {
+    el.onclick = () => ativar(+el.dataset.i, +el.dataset.u, el.dataset.c);
+    desenharCampo(+el.dataset.i, +el.dataset.u, el.dataset.c);
+  });
+  box.querySelectorAll('textarea').forEach(el => el.oninput = () => { obs[el.dataset.obs] = el.value; salvar(); });
+}
+
+function desenharCampo(i, u, c) {
+  const el = $('c-' + chave(i, u, c));
+  if (!el) return;
+  const lista = medidas[chave(i, u, c)] || [];
+  const m = menor(lista);
+  const outras = lista.filter((v, k) => k !== lista.indexOf(m));
+  const nome = CAMPOS.find(x => x[0] === c)[1];
+  el.className = 'campo' + (ativo && ativo.i === i && ativo.u === u && ativo.c === c ? ' ativo' : '') + (m !== null ? ' cheio' : '');
+  el.innerHTML = `<div class="nome">${nome}</div><div class="val">${m !== null ? m : '—'}</div>` +
+    (outras.length ? `<div class="outras">${outras.map(v => `${v} (+${v - m})`).join(' · ')}</div>` : '');
+}
+
+function ativar(i, u, c) {
+  const ant = ativo;
+  ativo = { i, u, c };
+  if (ant) desenharCampo(ant.i, ant.u, ant.c);
+  desenharCampo(i, u, c);
+  $('barra').style.display = 'block';
+  desenharBarra();
+  $('c-' + chave(i, u, c)).scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function desenharBarra() {
+  if (!ativo) return;
+  const it = itens[ativo.i];
+  const nome = CAMPOS.find(x => x[0] === ativo.c)[1];
+  $('barraQual').textContent = `${it.tipo}${it.unidades.length > 1 ? ' un. ' + (ativo.u + 1) : ''} · ${it.loc} · ${nome}`;
+  const lista = medidas[chave(ativo.i, ativo.u, ativo.c)] || [];
+  const m = menor(lista);
+  $('barraLeituras').innerHTML = lista.length
+    ? lista.map(v => v === m ? `<b>${v}</b>` : v).join(' · ') + `  → oficial <b>${m} mm</b>`
+    : 'Aguardando medida da trena...';
+}
+
+function adicionarMedida(mm) {
+  if (!ativo) { status('Medida recebida (' + mm + ' mm), mas nenhum campo está selecionado. Toque num campo.'); return; }
+  const k = chave(ativo.i, ativo.u, ativo.c);
+  (medidas[k] = medidas[k] || []).push(mm);
+  salvar();
+  desenharCampo(ativo.i, ativo.u, ativo.c);
+  desenharBarra();
+  if (navigator.vibrate) navigator.vibrate(80);
+}
+
+function proximo() {
+  if (!ativo) return;
+  let { i, u, c } = ativo;
+  let ci = CAMPOS.findIndex(x => x[0] === c) + 1;
+  if (ci >= CAMPOS.length) { ci = 0; u++; }
+  if (u >= itens[i].unidades.length) { u = 0; i++; }
+  if (i >= itens.length) { status('Último campo do caderno.'); return; }
+  ativar(i, u, CAMPOS[ci][0]);
+}
+
+$('btnProximo').onclick = proximo;
+$('btnDesfazer').onclick = () => {
+  if (!ativo) return;
+  const lista = medidas[chave(ativo.i, ativo.u, ativo.c)];
+  if (lista && lista.length) { lista.pop(); salvar(); desenharCampo(ativo.i, ativo.u, ativo.c); desenharBarra(); }
+};
+$('btnDigitar').onclick = () => {
+  const v = prompt('Medida em mm:');
+  const mm = v ? parseInt(v.replace(/\D/g, ''), 10) : NaN;
+  if (mm > 0) adicionarMedida(mm);
+};
+$('btnAbrir').onclick = () => $('arquivo').click();
+$('arquivo').onchange = e => { if (e.target.files[0]) abrirPdf(e.target.files[0]).catch(err => { status('Erro ao ler o PDF: ' + err.message); log(err.stack); }); };
+$('btnZerar').onclick = () => {
+  if (!confirm('Apagar todas as medidas desta obra neste celular?')) return;
+  medidas = {}; obs = {}; salvar(); desenharTudo();
+};
+
+// ---------- Trena por Bluetooth ----------
+// Mileseey D5T: serviço FFB0, característica FFB2, manda texto ("1.234m")
+const D5T_SERV = '0000ffb0-0000-1000-8000-00805f9b34fb';
+const D5T_DADOS = '0000ffb2-0000-1000-8000-00805f9b34fb';
+// Bosch GLM 50-27 C/CG: pacote binário C0 55 10 ..., metros em float no byte 7
+const BOSCH_SERV = '0000fde8-0000-1000-8000-00805f9b34fb';
+const BOSCH_SERV_ALT = '02a6c0d0-0451-4000-b000-fb3210111989';
+const BOSCH_DADOS = '02a6c0d2-0451-4000-b000-fb3210111989';
+
+function textoParaMm(txt) {
+  const m = txt.trim().match(/([\d.,]+)\s*(mm|cm|m|ft|in)?/i);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(',', '.'));
+  const u = (m[2] || 'm').toLowerCase();
+  const f = { mm: 1, cm: 10, m: 1000, ft: 304.8, in: 25.4 }[u];
+  return Math.round(n * f);
+}
+function boschParaMm(dv) {
+  if (dv.byteLength < 11 || dv.getUint8(0) !== 0xc0 || dv.getUint8(1) !== 0x55 || dv.getUint8(2) !== 0x10) return null;
+  const metros = dv.getFloat32(7, true);
+  return metros > 0 && metros < 100 ? Math.round(metros * 1000) : null;
+}
+const hex = dv => Array.from(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+
+async function tentar(server, servico, caract) {
+  try { return await (await server.getPrimaryService(servico)).getCharacteristic(caract); } catch (e) { return null; }
+}
+
+$('btnConectar').onclick = async () => {
+  if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
+  try {
+    status('Procurando a trena... escolha ela na lista.');
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [D5T_SERV, BOSCH_SERV, BOSCH_SERV_ALT]
+    });
+    log('Dispositivo: ' + device.name);
+    device.addEventListener('gattserverdisconnected', () => status('Trena desconectada. Toque em Conectar trena de novo.'));
+    status('Conectando em ' + device.name + '...');
+    const server = await device.gatt.connect();
+    let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto';
+    if (!car) { car = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); tipo = 'bosch'; }
+    if (!car) throw new Error('Essa trena não usa um protocolo conhecido. Me mande o nome dela.');
+    car.addEventListener('characteristicvaluechanged', ev => {
+      const dv = ev.target.value;
+      let mm;
+      if (tipo === 'texto') { const txt = new TextDecoder().decode(dv); log('Recebido: "' + txt + '"'); mm = textoParaMm(txt); }
+      else { log('Recebido: ' + hex(dv)); mm = boschParaMm(dv); }
+      if (mm) adicionarMedida(mm);
+    });
+    await car.startNotifications();
+    if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a]));
+    status('Trena ' + device.name + ' conectada. Toque num campo e meça.');
+  } catch (e) {
+    status('Erro: ' + e.message);
+    log('Erro: ' + e.name + ' - ' + e.message);
+  }
+};
+
+// ---------- PDF preenchido ----------
+async function gerarPdf() {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const doc = await PDFDocument.load(pdfBytes);
+  const fonte = await doc.embedFont(StandardFonts.Helvetica);
+  const negrito = await doc.embedFont(StandardFonts.HelveticaBold);
+  const azul = rgb(0.05, 0.25, 0.75), cinza = rgb(0.35, 0.35, 0.35);
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const paginas = doc.getPages();
+  const centro = (pg, txt, f, tam, cx, y, cor) => pg.drawText(txt, { x: cx - f.widthOfTextAtSize(txt, tam) / 2, y, size: tam, font: f, color: cor });
+
+  itens.forEach((it, i) => {
+    const pg = paginas[it.pagina];
+    it.unidades.forEach((un, u) => {
+      let algum = { cm: false, es: false };
+      for (const [c] of CAMPOS) {
+        const lista = medidas[chave(i, u, c)] || [];
+        if (!lista.length) continue;
+        const m = menor(lista);
+        const outras = lista.filter((v, k) => k !== lista.indexOf(m));
+        const cx = it.cols[c];
+        centro(pg, String(m), negrito, 9, cx, un.y + (outras.length ? 2.5 : 0), azul);
+        if (outras.length) centro(pg, outras.join(' / '), fonte, 4.5, cx, un.y - 3.5, cinza);
+        algum[c.slice(0, 2)] = true;
+      }
+      // Data no lugar do ___/___/___
+      un.datas.forEach((d, k) => {
+        if (!(k === 0 ? algum.cm : algum.es)) return;
+        pg.drawRectangle({ x: d.x - 1, y: d.y - 2, width: d.w + 2, height: d.h + 3, color: rgb(1, 1, 1) });
+        centro(pg, hoje, fonte, 7, d.x + d.w / 2, d.y, azul);
+      });
+    });
+    if (obs[i] && it.obsPos) pg.drawText(obs[i].replace(/\s+/g, ' ').slice(0, 140), { x: it.obsPos.x, y: it.obsPos.y, size: 7, font: fonte, color: azul });
+  });
+  return await doc.save();
+}
+
+$('btnGerar').onclick = async () => {
+  try {
+    status('Gerando PDF...');
+    const bytes = await gerarPdf();
+    const nome = nomeArquivo.replace(/\.pdf$/i, '') + ' - MEDIDO.pdf';
+    const arq = new File([bytes], nome, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [arq] })) {
+      await navigator.share({ files: [arq], title: nome });
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(arq); a.download = nome; a.click();
+    }
+    status('PDF gerado: ' + nome);
+  } catch (e) {
+    if (e.name !== 'AbortError') { status('Erro ao gerar o PDF: ' + e.message); log(e.stack); }
+  }
+};
+</script>
+</body>
+</html>
