@@ -41,9 +41,11 @@
   #barra button { padding: 10px; font-size: 15px; }
   #log { font-family: monospace; font-size: 11px; color: #6b7280; white-space: pre-wrap; margin-top: 12px; max-height: 160px; overflow: auto; }
   input[type=file] { display: none; }
+  .item .croqui { width: 100%; max-width: 330px; display: block; margin: 0 auto 8px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
   /* Assistente de opções (tela a tela) */
   #wiz { position: fixed; inset: 0; background: #f4f5f7; z-index: 50; display: none; flex-direction: column; }
-  #wizTopo { background: #1d2330; color: #fff; padding: 12px 14px; }
+  #wizTopo { background: #1d2330; color: #fff; padding: 12px 46px 12px 14px; position: relative; }
+  #wizFechar { position: absolute; top: 8px; right: 8px; background: transparent; color: #fff; font-size: 20px; padding: 4px 10px; line-height: 1; }
   #wizTopo .passo { font-size: 12px; color: #9fb0c7; }
   #wizTopo .qual { font-size: 15px; font-weight: 600; margin-top: 2px; }
   #wizTopo .barra { height: 4px; background: #39465c; border-radius: 3px; margin-top: 8px; overflow: hidden; }
@@ -91,9 +93,6 @@
   <div style="font-size:12px;color:#6b7280">Aparecem só os campos de medida da sua escolha. Pode trocar depois; as medidas de cada tipo ficam guardadas.</div>
 </div>
 <div id="itens"></div>
-<div class="linha" id="acoesFim" style="display:none">
-  <button id="btnOpcoes" class="sec">Preencher opções (tela a tela)</button>
-</div>
 <div class="linha" id="acoesFim2" style="display:none">
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
   <button id="btnZerar" class="sec">Apagar tudo desta obra</button>
@@ -114,6 +113,7 @@
 <!-- Assistente de opções tela a tela -->
 <div id="wiz">
   <div id="wizTopo">
+    <button id="wizFechar" title="Voltar às esquadrias">✕</button>
     <div class="passo" id="wizPasso"></div>
     <div class="qual" id="wizQual"></div>
     <div class="barra"><div id="wizProg"></div></div>
@@ -185,6 +185,8 @@ SECOES.forEach(s => s.ops.forEach(([fid]) => FLAG_SEC[fid] = s));
 
 // ---------- Estado ----------
 let pdfBytes = null;
+let pdfDoc = null;        // documento pdf.js (para renderizar os croquis)
+let croquiCache = {};     // i -> dataURL da imagem do croqui
 let nomeArquivo = '';
 let obra = {};
 let itens = [];           // cada item ganha também .sec {cabeçalho: {x,y}} das seções de flags
@@ -290,6 +292,7 @@ async function abrirPdf(file) {
   nomeArquivo = file.name;
   pdfBytes = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
+  pdfDoc = doc; croquiCache = {};
   itens = []; obra = {};
   for (let p = 1; p <= doc.numPages; p++) {
     const pag = await doc.getPage(p);
@@ -314,7 +317,36 @@ async function abrirPdf(file) {
   status(`${itens.length} itens e ${nUn} unidades. Escolha o que vai medir e toque num campo.`);
   log('Itens lidos: ' + itens.map(i => i.tipo).join(', '));
   desenharTudo();
+  desenharCroquis();
 }
+
+// Renderiza o croqui (desenho) de cada item e guarda como imagem para mostrar no card.
+async function desenharCroquis() {
+  if (!pdfDoc) return;
+  const porPag = {};
+  itens.forEach((it, i) => { if (it.sec['LADO DE ABERTURA'] && it.sec['TIPO DE TRILHO']) (porPag[it.pagina] = porPag[it.pagina] || []).push(i); });
+  const S = 2;
+  for (const pag of Object.keys(porPag)) {
+    if (porPag[pag].every(i => croquiCache[i])) { porPag[pag].forEach(setCroqui); continue; }
+    try {
+      const page = await pdfDoc.getPage(+pag + 1);
+      const vp = page.getViewport({ scale: S });
+      const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      const Hpt = vp.height / S;
+      for (const i of porPag[pag]) {
+        const it = itens[i], lado = it.sec['LADO DE ABERTURA'], tipo = it.sec['TIPO DE TRILHO'];
+        const x0 = 12, x1 = lado.x - 7, yTop = lado.y + 90, yBot = tipo.y + 9;
+        const sx = x0 * S, sy = (Hpt - yTop) * S, sw = (x1 - x0) * S, sh = (yTop - yBot) * S;
+        if (sw < 4 || sh < 4) continue;
+        const out = document.createElement('canvas'); out.width = sw; out.height = sh;
+        out.getContext('2d').drawImage(cv, sx, sy, sw, sh, 0, 0, sw, sh);
+        try { croquiCache[i] = out.toDataURL('image/png'); setCroqui(i); } catch (e) { }
+      }
+    } catch (e) { log('Croqui pág ' + pag + ': ' + e.message); }
+  }
+}
+function setCroqui(i) { const el = $('cq-' + i); if (el && croquiCache[i]) { el.src = croquiCache[i]; el.style.display = 'block'; } }
 
 // ---------- Tela principal ----------
 function chave(i, u, c) { return `${i}-${u}-${c}`; }
@@ -326,7 +358,6 @@ function desenharTudo() {
   $('obra').style.display = tem ? 'block' : 'none';
   $('obra').innerHTML = `<b>O.S. ${obra.os || ''}</b> · ${obra.cliente || ''}<br>${obra.obra || ''}<br><span style="color:#6b7280">${obra.end || ''}</span>`;
   $('escopoBar').style.display = tem ? 'block' : 'none';
-  $('acoesFim').style.display = tem ? 'flex' : 'none';
   $('acoesFim2').style.display = tem ? 'flex' : 'none';
   $('escopoBar').querySelectorAll('button').forEach(b => {
     b.className = (escopo === b.dataset.escopo) ? '' : 'cl';
@@ -338,7 +369,8 @@ function desenharTudo() {
   itens.forEach((it, i) => {
     const d = document.createElement('div');
     d.className = 'item';
-    let html = `<h2>${it.tipo} <span style="font-weight:400;font-size:13px;color:#6b7280">(qtde ${it.qtde})</span></h2>
+    let html = `<img class="croqui" id="cq-${i}" alt="croqui da esquadria" style="display:none">
+      <h2>${it.tipo} <span style="font-weight:400;font-size:13px;color:#6b7280">(qtde ${it.qtde})</span></h2>
       <div class="loc">${it.loc}</div><div class="desc">${it.desc}</div>
       <div class="prev">Previsto: ${it.prevL} × ${it.prevH} mm</div>`;
     it.unidades.forEach((un, u) => {
@@ -358,6 +390,7 @@ function desenharTudo() {
   });
   box.querySelectorAll('[data-opc]').forEach(el => el.onclick = () => abrirWizard(+el.dataset.opc));
   box.querySelectorAll('textarea').forEach(el => el.oninput = () => { obs[el.dataset.obs] = el.value; salvar(); });
+  itens.forEach((_, i) => setCroqui(i));
 }
 
 function desenharCampo(i, u, c) {
@@ -437,13 +470,17 @@ $('escopoBar').querySelectorAll('button').forEach(b => b.onclick = () => {
 // ---------- Assistente de opções (tela a tela) ----------
 let wiz = null; // { i, s }
 function abrirWizard(i) { wiz = { i, s: 0 }; $('wiz').style.display = 'flex'; wizRender(); }
-function fecharWizard() { wiz = null; $('wiz').style.display = 'none'; desenharTudo(); }
+function fecharWizard() {
+  const i = wiz ? wiz.i : null;
+  wiz = null; $('wiz').style.display = 'none'; desenharTudo();
+  if (i != null) { const el = document.querySelector(`[data-opc="${i}"]`); if (el) el.scrollIntoView({ block: 'center' }); }
+}
 
 function wizRender() {
   if (!wiz) return;
   const it = itens[wiz.i], sec = SECOES[wiz.s];
   const totalPassos = SECOES.length;
-  $('wizPasso').textContent = `Item ${wiz.i + 1} de ${itens.length}  ·  Passo ${wiz.s + 1} de ${totalPassos}`;
+  $('wizPasso').textContent = `Opções desta esquadria · passo ${wiz.s + 1} de ${totalPassos}`;
   $('wizQual').textContent = `${it.tipo} — ${it.loc || 'sem local'}`;
   $('wizProg').style.width = Math.round((wiz.s + 1) / totalPassos * 100) + '%';
   const f = flags[wiz.i] = flags[wiz.i] || {};
@@ -471,25 +508,23 @@ function wizRender() {
     if (v) f[fid] = v; else delete f[fid];
     salvar();
   });
-  const ultimoItem = wiz.i === itens.length - 1, ultimoPasso = wiz.s === totalPassos - 1;
-  $('wizProximo').textContent = (ultimoPasso && ultimoItem) ? 'Concluir ✓' : (ultimoPasso ? 'Próximo item ▶' : 'Próximo ▶');
+  const ultimoPasso = wiz.s === totalPassos - 1;
+  $('wizProximo').textContent = ultimoPasso ? 'Concluir ✓' : 'Próximo ▶';
+  $('wizVoltar').textContent = wiz.s === 0 ? 'Fechar' : '◀ Voltar';
 }
-$('wizProximo').onclick = () => {
+const wizAvancar = () => {
   if (!wiz) return;
-  if (wiz.s < SECOES.length - 1) { wiz.s++; }
-  else if (wiz.i < itens.length - 1) { wiz.i++; wiz.s = 0; }
-  else { fecharWizard(); return; }
-  wizRender();
+  if (wiz.s < SECOES.length - 1) { wiz.s++; wizRender(); }
+  else { fecharWizard(); }   // terminou as flags desta esquadria -> volta à lista
 };
-$('wizPular').onclick = $('wizProximo').onclick;
+$('wizProximo').onclick = wizAvancar;
+$('wizPular').onclick = wizAvancar;
 $('wizVoltar').onclick = () => {
   if (!wiz) return;
-  if (wiz.s > 0) wiz.s--;
-  else if (wiz.i > 0) { wiz.i--; wiz.s = SECOES.length - 1; }
-  else { fecharWizard(); return; }
-  wizRender();
+  if (wiz.s > 0) { wiz.s--; wizRender(); }
+  else { fecharWizard(); }
 };
-$('btnOpcoes').onclick = () => { if (itens.length) abrirWizard(0); };
+$('wizFechar').onclick = fecharWizard;
 
 // ---------- Trena por Bluetooth ----------
 const D5T_SERV = '0000ffb0-0000-1000-8000-00805f9b34fb';
