@@ -91,7 +91,7 @@
       this.local6 = enc(cred.local_key.slice(0, 6));
       this.loginKey = md5(this.local6);
       this.sessionKey = null; this.authKey = null;
-      this.versao = 3; this.seq = 1; this.esperando = new Map();
+      this.versao = 2; this.seq = 1; this.esperando = new Map();
       this.buf = null; this.esperadoN = 0; this.esperadoLen = 0;
       this.aoReceberDps = () => { };
     }
@@ -161,7 +161,8 @@
     async tratar(seq, respostaA, codigo, d) {
       let resultado = 0;
       if (codigo === COD.DEVICE_INFO) {
-        this.versao = d[2];
+        // mantém a versão de envio em 2 (como o app Smart Life faz na gravação da D5T);
+        // d[2] é só a versão de protocolo que a trena relata, usada no log abaixo
         this.sessionKey = md5(cat(this.local6, d.slice(6, 12)));
         this.authKey = d.slice(14, 46);
         this.log(`Tuya: protocolo ${d[2]}.${d[3]}, firmware ${d[0]}.${d[1]}`);
@@ -197,7 +198,7 @@
     // Aperto de mão: pede as informações da trena e depois faz o pareamento com as credenciais
     async conectar() {
       let ok = false;
-      for (const v of [this.versao, 2, 4]) {
+      for (const v of [2, 3, 4]) {
         this.versao = v;
         try { await this.enviar(COD.DEVICE_INFO, new Uint8Array(0), 0, 4000); ok = true; break; }
         catch (e) { this.log('Tuya: sem resposta com protocolo ' + v); }
