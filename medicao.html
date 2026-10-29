@@ -11,10 +11,13 @@
   button { font-size: 16px; padding: 12px; border: 0; border-radius: 10px; color: #fff; background: #1f6feb; }
   button.sec { background: #6b7280; }
   button.ok { background: #16a34a; }
+  button.cl { background: #eef1f5; color: #1d2330; border: 2px solid #d1d5db; }
   .linha { display: flex; gap: 8px; margin-bottom: 8px; }
   .linha > * { flex: 1; }
   #status { padding: 8px 10px; border-radius: 8px; background: #fff; margin-bottom: 10px; font-size: 14px; }
   #obra { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 14px; display: none; }
+  #escopoBar { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; display: none; }
+  #escopoBar .tit { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
   .item { background: #fff; border-radius: 12px; padding: 10px; margin-bottom: 10px; }
   .item h2 { font-size: 17px; margin: 0; }
   .item .loc { font-size: 14px; color: #374151; }
@@ -29,13 +32,35 @@
   .campo .outras { font-size: 11px; color: #6b7280; }
   .campo.ativo { border-color: #1f6feb; background: #eef4ff; }
   .campo.cheio .val { color: #15803d; }
+  .btnOpc { width: 100%; margin-top: 8px; background: #eef4ff; color: #1f4fb0; border: 2px solid #c7d8f5; font-size: 14px; font-weight: 600; }
+  .btnOpc.tem { background: #e8f6ee; color: #15803d; border-color: #bfe3cd; }
   textarea { width: 100%; font-size: 14px; border: 1px solid #d1d5db; border-radius: 8px; padding: 6px; margin-top: 6px; font-family: inherit; }
-  #barra { position: fixed; left: 0; right: 0; bottom: 0; background: #1d2330; color: #fff; padding: 10px 12px; display: none; }
+  #barra { position: fixed; left: 0; right: 0; bottom: 0; background: #1d2330; color: #fff; padding: 10px 12px; display: none; z-index: 20; }
   #barra .qual { font-size: 13px; color: #cbd5e1; }
   #barra .leituras { font-size: 15px; margin: 4px 0 8px; min-height: 20px; }
   #barra button { padding: 10px; font-size: 15px; }
   #log { font-family: monospace; font-size: 11px; color: #6b7280; white-space: pre-wrap; margin-top: 12px; max-height: 160px; overflow: auto; }
   input[type=file] { display: none; }
+  /* Assistente de opções (tela a tela) */
+  #wiz { position: fixed; inset: 0; background: #f4f5f7; z-index: 50; display: none; flex-direction: column; }
+  #wizTopo { background: #1d2330; color: #fff; padding: 12px 14px; }
+  #wizTopo .passo { font-size: 12px; color: #9fb0c7; }
+  #wizTopo .qual { font-size: 15px; font-weight: 600; margin-top: 2px; }
+  #wizTopo .barra { height: 4px; background: #39465c; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  #wizTopo .barra > div { height: 100%; background: #3b82f6; width: 0; transition: width .2s; }
+  #wizCorpo { flex: 1; overflow: auto; padding: 16px 14px; }
+  #wizCorpo h2 { font-size: 20px; margin: 0 0 4px; }
+  #wizCorpo .ajuda { font-size: 13px; color: #6b7280; margin: 0 0 16px; }
+  .ops { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .op { border: 2px solid #d1d5db; background: #fff; border-radius: 12px; padding: 16px 12px; font-size: 16px; text-align: center; cursor: pointer; min-height: 60px; display: flex; align-items: center; justify-content: center; }
+  .op.on { border-color: #16a34a; background: #e8f6ee; color: #15803d; font-weight: 700; }
+  .op.on::before { content: "✓ "; }
+  .campoVal { margin-bottom: 12px; }
+  .campoVal label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .campoVal input { width: 100%; font-size: 18px; padding: 12px; border: 2px solid #d1d5db; border-radius: 10px; }
+  #wizRodape { padding: 10px 14px; background: #fff; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; }
+  #wizRodape button { flex: 1; }
+  #wizRodape .meio { flex: 0.7; }
 </style>
 </head>
 <body>
@@ -56,10 +81,22 @@
   </div>
 </details>
 <div id="obra"></div>
+<div id="escopoBar">
+  <div class="tit">O que você vai medir agora?</div>
+  <div class="linha">
+    <button data-escopo="es" class="cl">Esquadrias</button>
+    <button data-escopo="cm" class="cl">Contramarcos</button>
+    <button data-escopo="ambos" class="cl">Os dois</button>
+  </div>
+  <div style="font-size:12px;color:#6b7280">Aparecem só os campos de medida da sua escolha. Pode trocar depois; as medidas de cada tipo ficam guardadas.</div>
+</div>
 <div id="itens"></div>
 <div class="linha" id="acoesFim" style="display:none">
+  <button id="btnOpcoes" class="sec">Preencher opções (tela a tela)</button>
+</div>
+<div class="linha" id="acoesFim2" style="display:none">
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
-  <button id="btnZerar" class="sec">Apagar medidas desta obra</button>
+  <button id="btnZerar" class="sec">Apagar tudo desta obra</button>
 </div>
 <button id="btnCopiarLog" class="sec" style="width:100%;margin-top:12px">Copiar registro</button>
 <div id="log"></div>
@@ -74,6 +111,21 @@
   </div>
 </div>
 
+<!-- Assistente de opções tela a tela -->
+<div id="wiz">
+  <div id="wizTopo">
+    <div class="passo" id="wizPasso"></div>
+    <div class="qual" id="wizQual"></div>
+    <div class="barra"><div id="wizProg"></div></div>
+  </div>
+  <div id="wizCorpo"></div>
+  <div id="wizRodape">
+    <button id="wizVoltar" class="sec">◀ Voltar</button>
+    <button id="wizPular" class="cl meio">Pular</button>
+    <button id="wizProximo">Próximo ▶</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="tuya.js"></script>
@@ -84,29 +136,83 @@ const $ = id => document.getElementById(id);
 function log(t) { $('log').textContent = t + '\n' + $('log').textContent; }
 function status(t) { $('status').textContent = t; }
 
+// ---------- Catálogo de flags do caderno (seções e opções) ----------
+// xRef = x do cabeçalho da seção no PDF (para achar a seção certa na página).
+const SECOES = [
+  { h: 'LADO DE ABERTURA', xRef: 171.8, t: 'Lado de abertura (vista externa)', tipo: 'check', ops: [
+      ['dentEsq', 'Abre p/ DENTRO à ESQUERDA'], ['foraEsq', 'Abre p/ FORA à ESQUERDA'],
+      ['dentDir', 'Abre p/ DENTRO à DIREITA'], ['foraDir', 'Abre p/ FORA à DIREITA'] ] },
+  { h: 'MOTOR', xRef: 466.6, t: 'Motor (vista interna)', tipo: 'check', ops: [
+      ['mEsq', 'Esquerda'], ['mDir', 'Direita'], ['v110', '110V'], ['v220', '220V'] ] },
+  { h: 'TIPO DE TRILHO', xRef: 18.8, t: 'Tipo de trilho', tipo: 'check', ops: [
+      ['convencional', 'Convencional'], ['isolado', 'Isolado'], ['embutidoU', 'Embutido em "U"'],
+      ['concavoPR', 'Côncavo (PR-003)'], ['concavoDP', 'Côncavo sobreposto (DP-126)'], ['drenagem', 'Com drenagem'] ] },
+  { h: 'ACABAMENTO', xRef: 171.8, t: 'Acabamento', tipo: 'check', ops: [
+      ['mp347int', 'MP-347 interno'], ['mp347ext', 'MP-347 externo'], ['semArremate', 'Sem arremate'],
+      ['semMeiaCana', 'Sem meia cana'], ['meiaCanaExt', 'Meia cana ext.'], ['meiaCanaInt', 'Meia cana int.'] ] },
+  { h: 'ARREMATE DE PISO', xRef: 174.7, t: 'Arremate de piso', tipo: 'check', ops: [
+      ['arrCom', 'Com'], ['arrSem', 'Sem'] ] },
+  { h: 'INSTALAÇÃO DA ESQUADRIA', xRef: 171.8, t: 'Instalação da esquadria', tipo: 'check', ops: [
+      ['instInt', 'Interno'], ['instEixo', 'Eixo'], ['instExt', 'Externo'] ] },
+  { h: 'CONTRAMARCO', xRef: 333.4, t: 'Contramarco', tipo: 'check', ops: [
+      ['cmFechado', 'Fechado'], ['cmPortico', 'Pórtico'], ['cmSem', 'Sem contramarco'] ] },
+  { h: 'MEDIDAS DE ESQUADRIAS', xRef: 333.4, t: 'Medidas combinadas', tipo: 'check', ops: [
+      ['largComb', 'Largura combinada'], ['altComb', 'Altura combinada'] ] },
+  { h: 'TELA', xRef: 466.6, t: 'Tela (vista interna)', tipo: 'check', ops: [
+      ['telaEsq', 'Esquerda'], ['telaDir', 'Direita'], ['correDentro', 'Corre dentro'], ['correFora', 'Corre fora'] ] },
+  { h: 'INFORMAÇÕES DE ALVENARIA', xRef: 466.6, t: 'Informações de alvenaria', tipo: 'valor', ops: [
+      ['bandeira', 'Bandeira'], ['peitoril', 'Peitoril'], ['espParede', 'Esp. parede'] ] },
+];
+// Posição de cada caixa de marcação: [seção, dx, dy] relativo ao cabeçalho da seção (coords do pdf.js).
+const CAIXA_OFF = {
+  dentEsq: ['LADO DE ABERTURA', 9.8, -12.8], foraEsq: ['LADO DE ABERTURA', 151.6, -12.8],
+  dentDir: ['LADO DE ABERTURA', 9.8, -31.9], foraDir: ['LADO DE ABERTURA', 151.6, -31.9],
+  mEsq: ['MOTOR', 7.0, -14.2], mDir: ['MOTOR', 66.5, -14.2], v110: ['MOTOR', 7.0, -31.2], v220: ['MOTOR', 66.5, -31.2],
+  convencional: ['TIPO DE TRILHO', 8.4, -11.3], isolado: ['TIPO DE TRILHO', 8.4, -24.4], embutidoU: ['TIPO DE TRILHO', 8.4, -37.4],
+  concavoPR: ['TIPO DE TRILHO', 8.4, -50.4], concavoDP: ['TIPO DE TRILHO', 8.4, -63.5], drenagem: ['TIPO DE TRILHO', 8.4, -76.5],
+  mp347int: ['ACABAMENTO', 7.0, -12.8], semMeiaCana: ['ACABAMENTO', 97.7, -12.8], mp347ext: ['ACABAMENTO', 7.0, -29.8],
+  meiaCanaExt: ['ACABAMENTO', 97.7, -29.8], semArremate: ['ACABAMENTO', 7.0, -46.8], meiaCanaInt: ['ACABAMENTO', 97.7, -46.8],
+  arrCom: ['ARREMATE DE PISO', 82.1, 1.5], arrSem: ['ARREMATE DE PISO', 117.6, 1.5],
+  instInt: ['INSTALAÇÃO DA ESQUADRIA', 8.4, -11.3], instEixo: ['INSTALAÇÃO DA ESQUADRIA', 60.9, -11.3], instExt: ['INSTALAÇÃO DA ESQUADRIA', 109.1, -11.3],
+  cmFechado: ['CONTRAMARCO', 9.8, -14.2], cmPortico: ['CONTRAMARCO', 69.4, -14.2], cmSem: ['CONTRAMARCO', 9.8, -31.2],
+  largComb: ['MEDIDAS DE ESQUADRIAS', 9.8, -14.1], altComb: ['MEDIDAS DE ESQUADRIAS', 9.8, -31.1],
+  telaEsq: ['TELA', 6.3, -10.6], telaDir: ['TELA', 64.4, -10.6], correDentro: ['TELA', 6.3, -22.7], correFora: ['TELA', 6.3, -34.7],
+};
+// Alvenaria: onde escrever o valor (dx após o cabeçalho, dy por campo).
+const ALV_OFF = { bandeira: [48, -12.9], peitoril: [48, -27.1], espParede: [48, -41.2] };
+const FLAG_SEC = {}; // fid -> objeto da seção
+SECOES.forEach(s => s.ops.forEach(([fid]) => FLAG_SEC[fid] = s));
+
 // ---------- Estado ----------
-let pdfBytes = null;      // PDF original
+let pdfBytes = null;
 let nomeArquivo = '';
-let obra = {};            // cabeçalho (OS, cliente...)
-let itens = [];           // [{pagina, tipo, qtde, loc, desc, prevL, prevH, cols, obsPos, unidades:[{y}]}]
-let medidas = {};         // chave "i-u-campo" -> [mm, mm, ...]
-let obs = {};             // índice do item -> texto
-let ativo = null;         // {i, u, campo}
-const CAMPOS = [['cmL', 'Contramarco L'], ['cmH', 'Contramarco H'], ['esL', 'Esquadria L'], ['esH', 'Esquadria H']];
+let obra = {};
+let itens = [];           // cada item ganha também .sec {cabeçalho: {x,y}} das seções de flags
+let medidas = {};         // "i-u-campo" -> [mm,...]
+let obs = {};             // i -> texto
+let flags = {};           // i -> { fid: true | "valor" }
+let escopo = null;        // 'es' | 'cm' | 'ambos'
+let ativo = null;
+const CAMPOS_TODOS = [['cmL', 'Contramarco L'], ['cmH', 'Contramarco H'], ['esL', 'Esquadria L'], ['esH', 'Esquadria H']];
+function campos() {
+  if (escopo === 'cm') return CAMPOS_TODOS.slice(0, 2);
+  if (escopo === 'es') return CAMPOS_TODOS.slice(2, 4);
+  return CAMPOS_TODOS;
+}
+const nomeCampo = c => (CAMPOS_TODOS.find(x => x[0] === c) || [c, c])[1];
 
 function chaveObra() { return 'medicao_' + (obra.os || nomeArquivo); }
 function salvar() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs })); } catch (e) { }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo })); } catch (e) { }
 }
 function carregarSalvo() {
   try {
     const s = JSON.parse(localStorage.getItem(chaveObra()) || 'null');
-    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; }
+    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; }
   } catch (e) { }
 }
 
 // ---------- Leitura do caderno (PDF do CEM) ----------
-// Agrupa os textos da página em linhas pela altura (y)
 function emLinhas(items) {
   const linhas = [];
   for (const it of items) {
@@ -118,7 +224,7 @@ function emLinhas(items) {
     l.t.push({ s, x, y, w: it.width, h: it.height || 7, cx: x + it.width / 2 });
   }
   linhas.forEach(l => l.t.sort((a, b) => a.x - b.x));
-  return linhas.sort((a, b) => b.y - a.y); // de cima para baixo
+  return linhas.sort((a, b) => b.y - a.y);
 }
 
 const ehNumero = s => /^\d+$/.test(s);
@@ -128,7 +234,6 @@ function lerPagina(linhas, pagina) {
   const resultado = [];
   const toks = linhas.flatMap(l => l.t);
   const acima = (lista, y) => lista.filter(t => t.y > y).sort((a, b) => a.y - b.y)[0];
-  // Cada item tem seu cabeçalho de tabela: linha com "L", "H", "DATA" duas vezes (pode haver 2 itens por página)
   const cabs = linhas.filter(l => l.t.filter(t => t.s === 'DATA').length >= 2 && l.t.filter(t => t.s === 'L').length >= 2);
   const trats = toks.filter(t => t.s.startsWith('TRATAMENTO'));
   const obsToks = toks.filter(t => t.s.startsWith('OBS'));
@@ -137,16 +242,14 @@ function lerPagina(linhas, pagina) {
     const Ls = cab.t.filter(t => t.s === 'L'), Hs = cab.t.filter(t => t.s === 'H'), Ds = cab.t.filter(t => t.s === 'DATA');
     const cols = { cmL: Ls[0].cx, cmH: Hs[0].cx, cmD: Ds[0].cx, esL: Ls[1].cx, esH: Hs[1].cx, esD: Ds[1].cx };
     const xTipoMax = cols.cmL - 40;
-    const yFim = k + 1 < cabs.length ? cabs[k + 1].y + 60 : -1;  // até o bloco do próximo item
+    const yFim = k + 1 < cabs.length ? cabs[k + 1].y + 60 : -1;
     const naFaixa = t => t.y < cab.y - 4 && t.y > yFim;
 
-    // Descrição: linhas logo acima de "TRATAMENTO:", alinhadas com ela
     const trat = acima(trats, cab.y);
     const desc = trat ? linhas.filter(l => l.y > trat.y + 1 && l.y < trat.y + 30 && Math.abs(l.t[0].x - trat.x) < 6)
       .sort((a, b) => b.y - a.y).map(l => l.t.map(t => t.s).join(' ')).join(' ') : '';
     const obsTok = acima(obsToks, cab.y);
 
-    // Linhas da tabela: começam pelo TIPO na coluna da esquerda
     const tipos = toks.filter(t => naFaixa(t) && t.x < xTipoMax && !ehNumero(t.s)).sort((a, b) => b.y - a.y);
     let atual = null;
     for (const tp of tipos) {
@@ -154,20 +257,32 @@ function lerPagina(linhas, pagina) {
       const nums = daLinha.filter(t => ehNumero(t.s) && Math.abs(t.y - tp.y) < 1.5).sort((a, b) => a.x - b.x);
       const datas = daLinha.filter(t => ehData(t.s)).sort((a, b) => a.x - b.x);
       if (nums.length >= 3) {
-        // Linha do item: TIPO QTDE L H DATA LOCALIZAÇÃO L H DATA
         const loc = daLinha.filter(t => !ehNumero(t.s) && !ehData(t.s) && t.cx > cols.cmD + 30 && t.cx < cols.esL - 25).map(t => t.s).join(' ');
         atual = {
-          pagina, tipo: tp.s, qtde: +nums[0].s, prevL: nums[1].s, prevH: nums[2].s, loc, desc, cols, unidades: [],
+          pagina, tipo: tp.s, qtde: +nums[0].s, prevL: nums[1].s, prevH: nums[2].s, loc, desc, cols, unidades: [], sec: {},
           obsPos: obsTok ? { x: obsTok.x + obsTok.w + 4, y: obsTok.y } : null
         };
         resultado.push(atual);
       } else if (atual && tp.s === atual.tipo && datas.length) {
-        // Linha em branco: onde vai a medida tirada na obra
         atual.unidades.push({ y: tp.y, datas: datas.map(d => ({ x: d.x, y: d.y, w: d.w, h: d.h })) });
       }
     }
   });
   return resultado;
+}
+
+// Acha os cabeçalhos das seções de flags na página (coords do pdf.js), agrupados e ordenados de cima p/ baixo.
+function acharSecoes(items) {
+  const por = {};
+  for (const s of SECOES) {
+    const achados = items.filter(it => {
+      const str = it.str.trim();
+      return str.startsWith(s.h) && Math.abs(it.transform[4] - s.xRef) < 6;
+    }).map(it => ({ x: it.transform[4], y: it.transform[5] }));
+    achados.sort((a, b) => b.y - a.y); // de cima para baixo
+    por[s.h] = achados;
+  }
+  return por;
 }
 
 async function abrirPdf(file) {
@@ -185,26 +300,41 @@ async function abrirPdf(file) {
       const pega = rot => { const s = tudo.find(x => x.includes(rot)); return s ? s.split(rot)[1].trim() : ''; };
       obra = { os: pega('O.S.:').split(' ')[0], cliente: pega('CLIENTE:'), obra: pega('OBRA:'), end: pega('ENDEREÇO:') };
     }
-    itens.push(...lerPagina(linhas, p - 1));
+    const itensPag = lerPagina(linhas, p - 1);
+    // liga cada item desta página aos cabeçalhos de seção (k-ésimo item = k-ésima ocorrência)
+    const secs = acharSecoes(tc.items);
+    itensPag.forEach((it, k) => {
+      for (const s of SECOES) { const lista = secs[s.h] || []; if (lista[k]) it.sec[s.h] = lista[k]; }
+    });
+    itens.push(...itensPag);
   }
-  medidas = {}; obs = {}; ativo = null;
+  medidas = {}; obs = {}; flags = {}; escopo = null; ativo = null;
   carregarSalvo();
   const nUn = itens.reduce((s, i) => s + i.unidades.length, 0);
-  status(`${itens.length} itens e ${nUn} unidades para medir. Conecte a trena e toque num campo.`);
+  status(`${itens.length} itens e ${nUn} unidades. Escolha o que vai medir e toque num campo.`);
   log('Itens lidos: ' + itens.map(i => i.tipo).join(', '));
   desenharTudo();
 }
 
-// ---------- Tela ----------
+// ---------- Tela principal ----------
 function chave(i, u, c) { return `${i}-${u}-${c}`; }
 function menor(lista) { return lista && lista.length ? Math.min(...lista) : null; }
+function nMarcadas(i) { const f = flags[i] || {}; return Object.keys(f).filter(k => f[k]).length; }
 
 function desenharTudo() {
-  $('obra').style.display = itens.length ? 'block' : 'none';
+  const tem = itens.length > 0;
+  $('obra').style.display = tem ? 'block' : 'none';
   $('obra').innerHTML = `<b>O.S. ${obra.os || ''}</b> · ${obra.cliente || ''}<br>${obra.obra || ''}<br><span style="color:#6b7280">${obra.end || ''}</span>`;
-  $('acoesFim').style.display = itens.length ? 'flex' : 'none';
+  $('escopoBar').style.display = tem ? 'block' : 'none';
+  $('acoesFim').style.display = tem ? 'flex' : 'none';
+  $('acoesFim2').style.display = tem ? 'flex' : 'none';
+  $('escopoBar').querySelectorAll('button').forEach(b => {
+    b.className = (escopo === b.dataset.escopo) ? '' : 'cl';
+  });
   const box = $('itens');
   box.innerHTML = '';
+  if (!escopo) { box.innerHTML = tem ? '<div class="item" style="color:#6b7280">Escolha acima: <b>Esquadrias</b>, <b>Contramarcos</b> ou <b>Os dois</b> para começar a medir.</div>' : ''; return; }
+  const CPS = campos();
   itens.forEach((it, i) => {
     const d = document.createElement('div');
     d.className = 'item';
@@ -213,9 +343,11 @@ function desenharTudo() {
       <div class="prev">Previsto: ${it.prevL} × ${it.prevH} mm</div>`;
     it.unidades.forEach((un, u) => {
       html += `<div class="un">${it.unidades.length > 1 ? `<div class="rot">Unidade ${u + 1}</div>` : ''}<div class="grade">`;
-      for (const [c, nome] of CAMPOS) html += `<div class="campo" id="c-${chave(i, u, c)}" data-i="${i}" data-u="${u}" data-c="${c}"></div>`;
+      for (const [c] of CPS) html += `<div class="campo" id="c-${chave(i, u, c)}" data-i="${i}" data-u="${u}" data-c="${c}"></div>`;
       html += `</div></div>`;
     });
+    const n = nMarcadas(i);
+    html += `<button class="btnOpc${n ? ' tem' : ''}" data-opc="${i}">⚙ Opções / flags${n ? ' (' + n + ' marcadas)' : ''}</button>`;
     html += `<textarea rows="1" placeholder="Observação (vai no campo OBS)" data-obs="${i}">${obs[i] || ''}</textarea>`;
     d.innerHTML = html;
     box.appendChild(d);
@@ -224,6 +356,7 @@ function desenharTudo() {
     el.onclick = () => ativar(+el.dataset.i, +el.dataset.u, el.dataset.c);
     desenharCampo(+el.dataset.i, +el.dataset.u, el.dataset.c);
   });
+  box.querySelectorAll('[data-opc]').forEach(el => el.onclick = () => abrirWizard(+el.dataset.opc));
   box.querySelectorAll('textarea').forEach(el => el.oninput = () => { obs[el.dataset.obs] = el.value; salvar(); });
 }
 
@@ -233,9 +366,8 @@ function desenharCampo(i, u, c) {
   const lista = medidas[chave(i, u, c)] || [];
   const m = menor(lista);
   const outras = lista.filter((v, k) => k !== lista.indexOf(m));
-  const nome = CAMPOS.find(x => x[0] === c)[1];
   el.className = 'campo' + (ativo && ativo.i === i && ativo.u === u && ativo.c === c ? ' ativo' : '') + (m !== null ? ' cheio' : '');
-  el.innerHTML = `<div class="nome">${nome}</div><div class="val">${m !== null ? m : '—'}</div>` +
+  el.innerHTML = `<div class="nome">${nomeCampo(c)}</div><div class="val">${m !== null ? m : '—'}</div>` +
     (outras.length ? `<div class="outras">${outras.map(v => `${v} (+${v - m})`).join(' · ')}</div>` : '');
 }
 
@@ -252,8 +384,7 @@ function ativar(i, u, c) {
 function desenharBarra() {
   if (!ativo) return;
   const it = itens[ativo.i];
-  const nome = CAMPOS.find(x => x[0] === ativo.c)[1];
-  $('barraQual').textContent = `${it.tipo}${it.unidades.length > 1 ? ' un. ' + (ativo.u + 1) : ''} · ${it.loc} · ${nome}`;
+  $('barraQual').textContent = `${it.tipo}${it.unidades.length > 1 ? ' un. ' + (ativo.u + 1) : ''} · ${it.loc} · ${nomeCampo(ativo.c)}`;
   const lista = medidas[chave(ativo.i, ativo.u, ativo.c)] || [];
   const m = menor(lista);
   $('barraLeituras').innerHTML = lista.length
@@ -273,12 +404,13 @@ function adicionarMedida(mm) {
 
 function proximo() {
   if (!ativo) return;
+  const CPS = campos();
   let { i, u, c } = ativo;
-  let ci = CAMPOS.findIndex(x => x[0] === c) + 1;
-  if (ci >= CAMPOS.length) { ci = 0; u++; }
+  let ci = CPS.findIndex(x => x[0] === c) + 1;
+  if (ci >= CPS.length) { ci = 0; u++; }
   if (u >= itens[i].unidades.length) { u = 0; i++; }
   if (i >= itens.length) { status('Último campo do caderno.'); return; }
-  ativar(i, u, CAMPOS[ci][0]);
+  ativar(i, u, CPS[ci][0]);
 }
 
 $('btnProximo').onclick = proximo;
@@ -295,15 +427,73 @@ $('btnDigitar').onclick = () => {
 $('btnAbrir').onclick = () => $('arquivo').click();
 $('arquivo').onchange = e => { if (e.target.files[0]) abrirPdf(e.target.files[0]).catch(err => { status('Erro ao ler o PDF: ' + err.message); log(err.stack); }); };
 $('btnZerar').onclick = () => {
-  if (!confirm('Apagar todas as medidas desta obra neste celular?')) return;
-  medidas = {}; obs = {}; salvar(); desenharTudo();
+  if (!confirm('Apagar todas as medidas e opções desta obra neste celular?')) return;
+  medidas = {}; obs = {}; flags = {}; salvar(); desenharTudo();
 };
+$('escopoBar').querySelectorAll('button').forEach(b => b.onclick = () => {
+  escopo = b.dataset.escopo; ativo = null; $('barra').style.display = 'none'; salvar(); desenharTudo();
+});
+
+// ---------- Assistente de opções (tela a tela) ----------
+let wiz = null; // { i, s }
+function abrirWizard(i) { wiz = { i, s: 0 }; $('wiz').style.display = 'flex'; wizRender(); }
+function fecharWizard() { wiz = null; $('wiz').style.display = 'none'; desenharTudo(); }
+
+function wizRender() {
+  if (!wiz) return;
+  const it = itens[wiz.i], sec = SECOES[wiz.s];
+  const totalPassos = SECOES.length;
+  $('wizPasso').textContent = `Item ${wiz.i + 1} de ${itens.length}  ·  Passo ${wiz.s + 1} de ${totalPassos}`;
+  $('wizQual').textContent = `${it.tipo} — ${it.loc || 'sem local'}`;
+  $('wizProg').style.width = Math.round((wiz.s + 1) / totalPassos * 100) + '%';
+  const f = flags[wiz.i] = flags[wiz.i] || {};
+  const corpo = $('wizCorpo');
+  let html = `<h2>${sec.t}</h2>`;
+  if (sec.tipo === 'valor') {
+    html += `<p class="ajuda">Digite os valores (em mm). Deixe em branco o que não tiver.</p>`;
+    for (const [fid, rot] of sec.ops) {
+      html += `<div class="campoVal"><label>${rot}</label><input inputmode="numeric" data-val="${fid}" value="${f[fid] || ''}" placeholder="—"></div>`;
+    }
+  } else {
+    html += `<p class="ajuda">Toque para marcar o que se aplica a este item.</p><div class="ops">`;
+    for (const [fid, rot] of sec.ops) html += `<div class="op${f[fid] ? ' on' : ''}" data-fid="${fid}">${rot}</div>`;
+    html += `</div>`;
+  }
+  corpo.innerHTML = html;
+  corpo.scrollTop = 0;
+  corpo.querySelectorAll('.op').forEach(el => el.onclick = () => {
+    const fid = el.dataset.fid;
+    if (f[fid]) delete f[fid]; else f[fid] = true;
+    el.classList.toggle('on'); salvar();
+  });
+  corpo.querySelectorAll('[data-val]').forEach(el => el.oninput = () => {
+    const fid = el.dataset.val, v = el.value.trim();
+    if (v) f[fid] = v; else delete f[fid];
+    salvar();
+  });
+  const ultimoItem = wiz.i === itens.length - 1, ultimoPasso = wiz.s === totalPassos - 1;
+  $('wizProximo').textContent = (ultimoPasso && ultimoItem) ? 'Concluir ✓' : (ultimoPasso ? 'Próximo item ▶' : 'Próximo ▶');
+}
+$('wizProximo').onclick = () => {
+  if (!wiz) return;
+  if (wiz.s < SECOES.length - 1) { wiz.s++; }
+  else if (wiz.i < itens.length - 1) { wiz.i++; wiz.s = 0; }
+  else { fecharWizard(); return; }
+  wizRender();
+};
+$('wizPular').onclick = $('wizProximo').onclick;
+$('wizVoltar').onclick = () => {
+  if (!wiz) return;
+  if (wiz.s > 0) wiz.s--;
+  else if (wiz.i > 0) { wiz.i--; wiz.s = SECOES.length - 1; }
+  else { fecharWizard(); return; }
+  wizRender();
+};
+$('btnOpcoes').onclick = () => { if (itens.length) abrirWizard(0); };
 
 // ---------- Trena por Bluetooth ----------
-// Mileseey D5T: serviço FFB0, característica FFB2, manda texto ("1.234m")
 const D5T_SERV = '0000ffb0-0000-1000-8000-00805f9b34fb';
 const D5T_DADOS = '0000ffb2-0000-1000-8000-00805f9b34fb';
-// Bosch GLM 50-27 C/CG: pacote binário C0 55 10 ..., metros em float no byte 7
 const BOSCH_SERV = '0000fde8-0000-1000-8000-00805f9b34fb';
 const BOSCH_SERV_ALT = '02a6c0d0-0451-4000-b000-fb3210111989';
 const BOSCH_DADOS = '02a6c0d2-0451-4000-b000-fb3210111989';
@@ -327,12 +517,11 @@ async function tentar(server, servico, caract) {
   try { return await (await server.getPrimaryService(servico)).getCharacteristic(caract); } catch (e) { return null; }
 }
 
-// Serviços que trenas e módulos Bluetooth comuns costumam usar. O Chrome só deixa ler os que estão nesta lista.
 const CANDIDATOS = [D5T_SERV, BOSCH_SERV, BOSCH_SERV_ALT,
   0xffe0, 0xfff0, 0xffc0, 0xffd0, 0xff00, 0xff10, 0xfe00, 0xae00, 0xae30, 0xfee7, 0xfee9, 0xfeea, 0x180a, 0x180f,
   0xff01, 0xffa0, 0xffb1, 0xffe5, 0xfff6, 0x18f0, 0xdfb0, 0xa000, 0xab00, 0xba00, 0x1910, 0x1920, 0xfd50, 0xa201, 0xfff1, 0xffa5,
-  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',  // Nordic UART
-  '49535343-fe7d-4ae5-8fa9-9fafd205e455',  // Microchip/ISSC
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
   '0000fe60-0000-1000-8000-00805f9b34fb', '0000fd00-0000-1000-8000-00805f9b34fb',
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0783b03e-8535-b5a0-7140-a304d2495cb7'];
 const nomeUuid = u => u.startsWith('0000') && u.endsWith('-0000-1000-8000-00805f9b34fb') ? u.slice(4, 8) : u;
@@ -359,11 +548,9 @@ $('btnConectar').onclick = async () => {
     status('Conectando em ' + device.name + '...');
     const server = await device.gatt.connect();
 
-    // 1) Chip Tuya (D5T nova): dados criptografados, precisa da chave
     const tuyaNot = await tentar(server, Tuya.SERV, Tuya.NOTIFY);
     if (tuyaNot) { await conectarTuya(server, tuyaNot, device.name); return; }
 
-    // 2) Protocolos abertos conhecidos
     let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto';
     if (!car) { car = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); tipo = 'bosch'; }
     if (car) {
@@ -374,7 +561,6 @@ $('btnConectar').onclick = async () => {
       return;
     }
 
-    // 3) Protocolo desconhecido: escuta tudo que a trena oferece e mostra no registro
     const servicos = await server.getPrimaryServices().catch(() => []);
     log('Serviços: ' + (servicos.map(sv => nomeUuid(sv.uuid)).join(', ') || 'nenhum da lista'));
     let ouvindo = 0;
@@ -423,7 +609,6 @@ $('btnTuyaSalvar').onclick = () => {
 $('btnTuyaCalib').onclick = () => { gravarJson('tuya_dp', null); gravarJson('tuya_ignorar', []); mostrarEstadoTuya(); status('Calibração apagada. Na próxima medida o app pergunta de novo.'); };
 mostrarEstadoTuya();
 
-// Descobre qual dado da trena é a distância: na 1ª medida pergunta o valor do visor
 function tuyaParaMm(dps) {
   const mapa = lerJson('tuya_dp'), ignorar = lerJson('tuya_ignorar') || [];
   for (const dp of dps) {
@@ -477,12 +662,18 @@ async function gerarPdf() {
   const hoje = new Date().toLocaleDateString('pt-BR');
   const paginas = doc.getPages();
   const centro = (pg, txt, f, tam, cx, y, cor) => pg.drawText(txt, { x: cx - f.widthOfTextAtSize(txt, tam) / 2, y, size: tam, font: f, color: cor });
+  const marcarX = (pg, cx, cy) => {   // X dentro da caixinha (lado ~11pt)
+    const r = 3.6;
+    pg.drawLine({ start: { x: cx - r, y: cy - r }, end: { x: cx + r, y: cy + r }, thickness: 1.4, color: azul });
+    pg.drawLine({ start: { x: cx - r, y: cy + r }, end: { x: cx + r, y: cy - r }, thickness: 1.4, color: azul });
+  };
 
   itens.forEach((it, i) => {
     const pg = paginas[it.pagina];
+    // 1) medidas
     it.unidades.forEach((un, u) => {
       let algum = { cm: false, es: false };
-      for (const [c] of CAMPOS) {
+      for (const [c] of CAMPOS_TODOS) {
         const lista = medidas[chave(i, u, c)] || [];
         if (!lista.length) continue;
         const m = menor(lista);
@@ -492,13 +683,27 @@ async function gerarPdf() {
         if (outras.length) centro(pg, outras.join(' / '), fonte, 4.5, cx, un.y - 3.5, cinza);
         algum[c.slice(0, 2)] = true;
       }
-      // Data no lugar do ___/___/___
       un.datas.forEach((d, k) => {
         if (!(k === 0 ? algum.cm : algum.es)) return;
         pg.drawRectangle({ x: d.x - 1, y: d.y - 2, width: d.w + 2, height: d.h + 3, color: rgb(1, 1, 1) });
         centro(pg, hoje, fonte, 7, d.x + d.w / 2, d.y, azul);
       });
     });
+    // 2) flags marcadas
+    const f = flags[i] || {};
+    for (const fid of Object.keys(f)) {
+      if (!f[fid]) continue;
+      const sec = FLAG_SEC[fid]; if (!sec) continue;
+      const anc = it.sec[sec.h]; if (!anc) continue;
+      if (sec.tipo === 'valor') {
+        const off = ALV_OFF[fid]; if (!off) continue;
+        pg.drawText(String(f[fid]), { x: anc.x + off[0], y: anc.y + off[1] - 2, size: 7, font: fonte, color: azul });
+      } else {
+        const off = CAIXA_OFF[fid]; if (!off) continue;
+        marcarX(pg, anc.x + off[1], anc.y + off[2]);
+      }
+    }
+    // 3) OBS
     if (obs[i] && it.obsPos) pg.drawText(obs[i].replace(/\s+/g, ' ').slice(0, 140), { x: it.obsPos.x, y: it.obsPos.y, size: 7, font: fonte, color: azul });
   });
   return await doc.save();
