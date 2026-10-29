@@ -52,6 +52,7 @@
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
   <button id="btnZerar" class="sec">Apagar medidas desta obra</button>
 </div>
+<button id="btnCopiarLog" class="sec" style="width:100%;margin-top:12px">Copiar registro</button>
 <div id="log"></div>
 
 <div id="barra">
@@ -316,35 +317,80 @@ async function tentar(server, servico, caract) {
   try { return await (await server.getPrimaryService(servico)).getCharacteristic(caract); } catch (e) { return null; }
 }
 
+// Serviços que trenas e módulos Bluetooth comuns costumam usar. O Chrome só deixa ler os que estão nesta lista.
+const CANDIDATOS = [D5T_SERV, BOSCH_SERV, BOSCH_SERV_ALT,
+  0xffe0, 0xfff0, 0xffc0, 0xffd0, 0xff00, 0xff10, 0xfe00, 0xae00, 0xae30, 0xfee7, 0xfee9, 0xfeea, 0x180a, 0x180f,
+  0xff01, 0xffa0, 0xffb1, 0xffe5, 0xfff6, 0x18f0, 0xdfb0, 0xa000, 0xab00, 0xba00, 0x1910, 0x1920,
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',  // Nordic UART
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',  // Microchip/ISSC
+  '0000fe60-0000-1000-8000-00805f9b34fb', '0000fd00-0000-1000-8000-00805f9b34fb',
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0783b03e-8535-b5a0-7140-a304d2495cb7'];
+const nomeUuid = u => u.startsWith('0000') && u.endsWith('-0000-1000-8000-00805f9b34fb') ? u.slice(4, 8) : u;
+
+function tratarDados(tipo, dv, origem) {
+  let mm = null;
+  if (tipo === 'bosch') { log('Recebido: ' + hex(dv)); mm = boschParaMm(dv); }
+  else {
+    const txt = new TextDecoder().decode(dv);
+    const legivel = /^[\x20-\x7e\r\n\t]*$/.test(txt);
+    log('Recebido' + (origem ? ' [' + origem + ']' : '') + ': ' + (legivel ? '"' + txt.trim() + '"  ' : '') + '(' + hex(dv) + ')');
+    if (legivel && /\d/.test(txt)) mm = textoParaMm(txt);
+  }
+  if (mm) adicionarMedida(mm);
+}
+
 $('btnConectar').onclick = async () => {
   if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
   try {
     status('Procurando a trena... escolha ela na lista.');
-    const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [D5T_SERV, BOSCH_SERV, BOSCH_SERV_ALT]
-    });
+    const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: CANDIDATOS });
     log('Dispositivo: ' + device.name);
     device.addEventListener('gattserverdisconnected', () => status('Trena desconectada. Toque em Conectar trena de novo.'));
     status('Conectando em ' + device.name + '...');
     const server = await device.gatt.connect();
+
+    // 1) Protocolos conhecidos
     let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto';
     if (!car) { car = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); tipo = 'bosch'; }
-    if (!car) throw new Error('Essa trena não usa um protocolo conhecido. Me mande o nome dela.');
-    car.addEventListener('characteristicvaluechanged', ev => {
-      const dv = ev.target.value;
-      let mm;
-      if (tipo === 'texto') { const txt = new TextDecoder().decode(dv); log('Recebido: "' + txt + '"'); mm = textoParaMm(txt); }
-      else { log('Recebido: ' + hex(dv)); mm = boschParaMm(dv); }
-      if (mm) adicionarMedida(mm);
-    });
-    await car.startNotifications();
-    if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a]));
-    status('Trena ' + device.name + ' conectada. Toque num campo e meça.');
+    if (car) {
+      car.addEventListener('characteristicvaluechanged', ev => tratarDados(tipo, ev.target.value));
+      await car.startNotifications();
+      if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a]));
+      status('Trena ' + device.name + ' conectada. Toque num campo e meça.');
+      return;
+    }
+
+    // 2) Protocolo desconhecido: escuta tudo que a trena oferece e mostra no registro
+    const servicos = await server.getPrimaryServices().catch(() => []);
+    log('Serviços: ' + (servicos.map(sv => nomeUuid(sv.uuid)).join(', ') || 'nenhum da lista'));
+    let ouvindo = 0;
+    for (const sv of servicos) {
+      const cars = await sv.getCharacteristics().catch(() => []);
+      for (const c of cars) {
+        const pr = c.properties;
+        const props = ['read', 'write', 'writeWithoutResponse', 'notify', 'indicate'].filter(k => pr[k]).join('/');
+        log('  ' + nomeUuid(sv.uuid) + ' → ' + nomeUuid(c.uuid) + ' (' + props + ')');
+        if (pr.notify || pr.indicate) {
+          try {
+            const origem = nomeUuid(c.uuid);
+            c.addEventListener('characteristicvaluechanged', ev => tratarDados('texto', ev.target.value, origem));
+            await c.startNotifications();
+            ouvindo++;
+          } catch (e) { log('  não consegui ouvir ' + nomeUuid(c.uuid) + ': ' + e.message); }
+        }
+      }
+    }
+    if (ouvindo) status(`Conectado em ${device.name} (modo teste). Faça uma medida e me mande um print do registro cinza lá embaixo, ou toque em "Copiar registro".`);
+    else throw new Error('Não achei o canal de dados da trena ' + device.name + '. Toque em "Copiar registro" e me mande.');
   } catch (e) {
     status('Erro: ' + e.message);
     log('Erro: ' + e.name + ' - ' + e.message);
   }
+};
+
+$('btnCopiarLog').onclick = async () => {
+  try { await navigator.clipboard.writeText($('log').textContent); status('Registro copiado. Cole na conversa com o Claude.'); }
+  catch (e) { status('Não consegui copiar: ' + e.message); }
 };
 
 // ---------- PDF preenchido ----------
