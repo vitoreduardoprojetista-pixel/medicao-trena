@@ -79,6 +79,16 @@
   .anexoThumb .rem { position: absolute; top: -7px; right: -7px; background: #dc2626; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 15px; padding: 0; line-height: 24px; }
   .anexoThumb .edt { position: absolute; top: -7px; left: -7px; background: #1f6feb; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 13px; padding: 0; line-height: 24px; }
   .anexoThumb .tag { position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 6px; }
+  #extrasBar { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; display: none; }
+  #extrasBar .tit { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  #extrasGaleria { margin-top: 6px; }
+  #extrasGaleria:empty::before { content: "Nenhum item extra ainda."; font-size: 12px; color: #9aa3b2; }
+  .extraThumb { position: relative; display: inline-block; margin: 4px; vertical-align: top; width: 92px; }
+  .extraThumb img { width: 92px; height: 92px; object-fit: cover; border: 1px solid #d1d5db; border-radius: 8px; display: block; background: #fff; }
+  .extraThumb .legenda { font-size: 10px; color: #4b5563; text-align: center; margin-top: 2px; line-height: 1.2; }
+  .extraThumb .rem { position: absolute; top: -7px; right: -7px; background: #dc2626; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 15px; padding: 0; line-height: 24px; }
+  .extraThumb .edt { position: absolute; top: -7px; left: -7px; background: #1f6feb; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 13px; padding: 0; line-height: 24px; }
+  .extraThumb .flg { position: absolute; bottom: 20px; right: 2px; background: #6d28d9; color: #fff; border: 0; border-radius: 6px; font-size: 11px; padding: 2px 6px; }
   /* Tela de desenho à mão */
   #draw { position: fixed; inset: 0; background: #374151; z-index: 60; display: none; flex-direction: column; }
   #drawTopo { background: #1d2330; color: #fff; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -88,7 +98,12 @@
   #drawCampos { background: #fff; padding: 8px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
   #drawCampos label { font-size: 11px; color: #6b7280; display: flex; flex-direction: column; gap: 2px; }
   #drawCampos label.full { grid-column: 1 / -1; }
-  #drawCampos input { font-size: 15px; padding: 7px 8px; border: 1px solid #d1d5db; border-radius: 8px; }
+  #drawCampos input { font-size: 15px; padding: 7px 8px; border: 1px solid #d1d5db; border-radius: 8px; width: 100%; box-sizing: border-box; }
+  #drawCampos .comMedir { display: flex; gap: 5px; align-items: stretch; }
+  #drawCampos .comMedir input { flex: 1; min-width: 0; }
+  .medirMini { display: none; background: #1f6feb; color: #fff; border: 0; border-radius: 8px; font-size: 15px; padding: 0 10px; }
+  .medirMini.armado { background: #16a34a; }
+  #draw.modoExtra .medirMini { display: inline-block; }
   #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
   #drawCanvas { background: #fff; border-radius: 6px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 2px 12px rgba(0,0,0,.4); }
   /* Botão de configurações no topo */
@@ -153,6 +168,11 @@
   </div>
   <div id="anexosGaleria"></div>
 </div>
+<div id="extrasBar">
+  <div class="tit">Itens extras (incluídos no fim do caderno)</div>
+  <button id="btnIncluirExtra" class="cl" style="width:100%">➕ Incluir item extra</button>
+  <div id="extrasGaleria"></div>
+</div>
 <input type="file" id="fotoInput" accept="image/*" capture="environment" multiple>
 <div class="linha" id="acoesFim2" style="display:none">
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
@@ -188,7 +208,7 @@
 <!-- Tela de desenho à mão (dedo ou caneta) -->
 <div id="draw">
   <div id="drawTopo">
-    <span>Desenho à mão</span>
+    <span id="drawTitulo">Desenho à mão</span>
     <div>
       <button id="drawLimpar" class="cl">Limpar</button>
       <button id="drawCancelar" class="sec">Cancelar</button>
@@ -196,8 +216,8 @@
     </div>
   </div>
   <div id="drawCampos">
-    <label>Largura<input id="dcL" inputmode="numeric" placeholder="ex.: 1200"></label>
-    <label>Altura<input id="dcA" inputmode="numeric" placeholder="ex.: 1500"></label>
+    <label>Largura<span class="comMedir"><input id="dcL" inputmode="numeric" placeholder="ex.: 1200"><button type="button" id="dcLMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
+    <label>Altura<span class="comMedir"><input id="dcA" inputmode="numeric" placeholder="ex.: 1500"><button type="button" id="dcAMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
     <label>Localização<input id="dcLoc" placeholder="ex.: Sala"></label>
     <label>Peitoril<input id="dcPeit" inputmode="numeric" placeholder="ex.: 1000"></label>
@@ -322,6 +342,7 @@ let flags = {};           // i -> { fid: true | "valor" }
 let escopo = null;        // 'es' | 'cm' | 'ambos'
 let anexos = [];          // [{ tipo: 'foto'|'desenho', data: dataURL }] -> páginas no fim do PDF
 let ordemIds = [];        // ordem de exibição das esquadrias (lista de it.id), escolhida pelo usuário
+let extras = [];          // itens incluídos pelo usuário: [{ id, data, base, campos }] -> páginas no fim do PDF; flags em flags[id]
 let ativo = null;
 const CAMPOS_TODOS = [['cmL', 'Contramarco L'], ['cmH', 'Contramarco H'], ['esL', 'Esquadria L'], ['esH', 'Esquadria H']];
 function campos() {
@@ -333,17 +354,17 @@ const nomeCampo = c => (CAMPOS_TODOS.find(x => x[0] === c) || [c, c])[1];
 
 function chaveObra() { return 'medicao_' + (obra.os || nomeArquivo); }
 function salvar() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds })); } catch (e) { }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras })); } catch (e) { }
 }
 // Igual a salvar(), mas avisa quando a memória do celular estoura (fotos são pesadas).
 function salvarComAviso() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds })); return true; }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras })); return true; }
   catch (e) { status('Memória do celular cheia: o anexo entra no PDF agora, mas pode sumir se você fechar o app. Gere o PDF antes de fechar.'); return false; }
 }
 function carregarSalvo() {
   try {
     const s = JSON.parse(localStorage.getItem(chaveObra()) || 'null');
-    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; anexos = s.anexos || []; ordemIds = s.ordem || []; }
+    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; anexos = s.anexos || []; ordemIds = s.ordem || []; extras = s.extras || []; }
   } catch (e) { }
 }
 
@@ -444,7 +465,7 @@ async function abrirPdf(file) {
     });
     itens.push(...itensPag);
   }
-  medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; ativo = null;
+  medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; extras = []; ativo = null;
   itens.forEach((it, idx) => it.id = idx); // id estável na ordem em que o PDF foi lido
   carregarSalvo();
   aplicarOrdemSalva();
@@ -514,6 +535,7 @@ function desenharTudo() {
   $('acoesFim2').style.display = tem ? 'flex' : 'none';
   $('btnReordenar').style.display = (tem && itens.length > 1) ? 'block' : 'none';
   desenharAnexos();
+  desenharExtras();
   $('escopoBar').querySelectorAll('button').forEach(b => {
     b.className = (escopo === b.dataset.escopo) ? '' : 'cl';
   });
@@ -582,6 +604,15 @@ function desenharBarra() {
 }
 
 function adicionarMedida(mm) {
+  // Item extra sendo desenhado: medida vai pro campo Largura/Altura armado.
+  if (alvoExtra && $('draw').style.display !== 'none') {
+    $(alvoExtra === 'L' ? 'dcL' : 'dcA').value = mm;
+    $(alvoExtra === 'L' ? 'dcLMedir' : 'dcAMedir').classList.remove('armado');
+    status((alvoExtra === 'L' ? 'Largura' : 'Altura') + ': ' + mm + ' mm.');
+    alvoExtra = null;
+    if (navigator.vibrate) navigator.vibrate(80);
+    return;
+  }
   // Campo de alvenaria armado: guarda só a última medida (sobrescreve) e volta pro visor.
   if (alvoAlv) {
     const f = flags[alvoAlv.id] = flags[alvoAlv.id] || {};
@@ -630,33 +661,37 @@ $('btnReordenar').onclick = () => { ordemIds = itens.map(it => it.id); abrirOrde
 $('btnOpcoes').onclick = () => { $('opcoes').style.display = 'flex'; };
 $('opcoesFechar').onclick = () => { $('opcoes').style.display = 'none'; };
 $('btnZerar').onclick = () => {
-  if (!confirm('Apagar todas as medidas, flags, observações e anexos desta obra neste celular?')) return;
-  medidas = {}; obs = {}; flags = {}; anexos = []; salvar(); $('opcoes').style.display = 'none'; desenharTudo();
+  if (!confirm('Apagar todas as medidas, flags, observações, anexos e itens extras desta obra neste celular?')) return;
+  medidas = {}; obs = {}; flags = {}; anexos = []; extras = []; salvar(); $('opcoes').style.display = 'none'; desenharTudo();
 };
 $('escopoBar').querySelectorAll('button').forEach(b => b.onclick = () => {
   escopo = b.dataset.escopo; ativo = null; $('barra').style.display = 'none'; salvar(); desenharTudo();
 });
 
 // ---------- Assistente de opções (tela a tela) ----------
-let wiz = null; // { i, s }
+let wiz = null; // { i, s } para esquadria do caderno; { ex, s } para item extra
 let alvoAlv = null; // campo de alvenaria "armado" p/ receber a próxima medida da trena: { id, fid }
 function abrirWizard(i) { wiz = { i, s: 0 }; $('wiz').style.display = 'flex'; wizRender(); }
+function abrirWizardExtra(ex) { wiz = { ex, s: 0 }; $('wiz').style.display = 'flex'; wizRender(); }
 function fecharWizard() {
-  const i = wiz ? wiz.i : null;
+  const ex = wiz && wiz.ex;
+  const i = wiz && !ex ? wiz.i : null;
   wiz = null; alvoAlv = null; $('wiz').style.display = 'none'; desenharTudo();
-  if (i != null) { const el = document.querySelector(`[data-opc="${i}"]`); if (el) el.scrollIntoView({ block: 'center' }); }
+  if (ex) { const el = $('extrasBar'); if (el) el.scrollIntoView({ block: 'center' }); status('Item extra salvo.'); }
+  else if (i != null) { const el = document.querySelector(`[data-opc="${i}"]`); if (el) el.scrollIntoView({ block: 'center' }); }
 }
 
 function wizRender() {
   if (!wiz) return;
   alvoAlv = null; // trocar de passo desarma o campo de alvenaria
   const secs = secoesDoEscopo();
-  const it = itens[wiz.i], sec = secs[wiz.s];
+  const ex = wiz.ex, sec = secs[wiz.s];
   const totalPassos = secs.length;
-  $('wizPasso').textContent = `Opções ${escopo === 'cm' ? 'do contramarco' : 'da esquadria'} · passo ${wiz.s + 1} de ${totalPassos}`;
-  $('wizQual').textContent = `${it.tipo} — ${it.loc || 'sem local'}`;
+  const nomeAlvo = ex ? ((ex.campos && ex.campos.loc) || 'Item extra') : `${itens[wiz.i].tipo} — ${itens[wiz.i].loc || 'sem local'}`;
+  $('wizPasso').textContent = `${ex ? 'Inclusão' : 'Opções'} ${escopo === 'cm' ? 'do contramarco' : 'da esquadria'} · passo ${wiz.s + 1} de ${totalPassos}`;
+  $('wizQual').textContent = nomeAlvo;
   $('wizProg').style.width = Math.round((wiz.s + 1) / totalPassos * 100) + '%';
-  const idf = itens[wiz.i].id;
+  const idf = ex ? ex.id : itens[wiz.i].id;
   const f = flags[idf] = flags[idf] || {};
   const corpo = $('wizCorpo');
   let html = `<h2>${sec.t}</h2>`;
@@ -1112,7 +1147,10 @@ $('fotoInput').onchange = async e => {
 
 // Desenho à mão (dedo ou caneta no tablet). Editável: guarda o traço cru (base) + os campos.
 let drawCtx = null, desenhando = false, editIndex = null;
+let drawExtra = null;   // null = croqui/anexo normal; { ex } quando o desenho é de um item extra (ex=null se novo)
+let alvoExtra = null;   // 'L' | 'A': campo do item extra armado p/ receber a próxima medida da trena
 const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs'];
+function fecharModoExtra() { drawExtra = null; alvoExtra = null; $('draw').classList.remove('modoExtra'); $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado'); }
 function prepararCanvas() {
   const cv = $('drawCanvas');
   cv.width = 1000; cv.height = 1414; // proporção de folha A4 em retrato
@@ -1122,9 +1160,29 @@ function prepararCanvas() {
 }
 function abrirDesenho() {
   editIndex = null;
+  fecharModoExtra();
+  $('drawTitulo').textContent = 'Desenho à mão';
   prepararCanvas();
   DC_IDS.forEach(id => $(id).value = '');
   $('draw').style.display = 'flex';
+}
+function preencherCampos(c) {
+  c = c || {};
+  $('dcL').value = c.L || ''; $('dcA').value = c.A || ''; $('dcQt').value = c.qt || '';
+  $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
+}
+// Abre o editor de desenho em "modo item extra": campos L/A medíveis pela trena. ex=null cria um novo.
+function abrirExtraDesenho(ex) {
+  editIndex = null;
+  drawExtra = { ex: ex || null };
+  alvoExtra = null;
+  $('draw').classList.add('modoExtra');
+  $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado');
+  $('drawTitulo').textContent = ex ? 'Editar item extra' : 'Novo item extra';
+  prepararCanvas();
+  preencherCampos(ex && ex.campos);
+  $('draw').style.display = 'flex';
+  if (ex && ex.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = ex.base; }
 }
 function abrirDesenhoEdicao(k) {
   const a = anexos[k]; if (!a || a.tipo !== 'desenho') return;
@@ -1169,11 +1227,25 @@ function comporDesenho(base, campos) {
 }
 $('btnDesenhar').onclick = abrirDesenho;
 $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
-$('drawCancelar').onclick = () => { editIndex = null; $('draw').style.display = 'none'; };
+$('drawCancelar').onclick = () => { editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
+$('dcLMedir').onclick = () => { alvoExtra = 'L'; $('dcLMedir').classList.add('armado'); $('dcAMedir').classList.remove('armado'); status('Meça com a trena — vai para a Largura.'); };
+$('dcAMedir').onclick = () => { alvoExtra = 'A'; $('dcAMedir').classList.add('armado'); $('dcLMedir').classList.remove('armado'); status('Meça com a trena — vai para a Altura.'); };
 $('drawSalvar').onclick = () => {
   const campos = lerCamposDesenho();
   const base = $('drawCanvas').toDataURL('image/png');
-  const anexo = { tipo: 'desenho', data: comporDesenho($('drawCanvas'), campos), base, campos };
+  const data = comporDesenho($('drawCanvas'), campos);
+  if (drawExtra) {
+    // Item extra: cria/atualiza e segue para as flags.
+    let ex = drawExtra.ex;
+    if (ex) { ex.data = data; ex.base = base; ex.campos = campos; }
+    else { ex = { id: 'x' + Date.now() + Math.floor(Math.random() * 1000), data, base, campos }; extras.push(ex); }
+    fecharModoExtra();
+    $('draw').style.display = 'none';
+    salvarComAviso(); desenharExtras();
+    abrirWizardExtra(ex);   // na sequência, as flags (iguais às da esquadria/contramarco)
+    return;
+  }
+  const anexo = { tipo: 'desenho', data, base, campos };
   if (editIndex != null && anexos[editIndex]) anexos[editIndex] = anexo; else anexos.push(anexo);
   editIndex = null;
   $('draw').style.display = 'none';
@@ -1187,6 +1259,55 @@ $('drawSalvar').onclick = () => {
   window.addEventListener('pointerup', () => { desenhando = false; });
   window.addEventListener('pointercancel', () => { desenhando = false; });
 })();
+
+// ---------- Itens extras (inclusões no fim do caderno) ----------
+// Resumo das flags marcadas de um item (texto legível) — usado nos extras.
+function flagsResumo(id) {
+  const f = flags[id] || {};
+  const partes = [];
+  for (const s of SECOES) {
+    for (const [fid, rot] of s.ops) {
+      if (!f[fid]) continue;
+      partes.push(s.tipo === 'valor' ? rot + ': ' + f[fid] : rot);
+    }
+  }
+  return partes;
+}
+function desenharExtras() {
+  const bar = $('extrasBar');
+  if (!bar) return;
+  bar.style.display = itens.length ? 'block' : 'none';
+  const g = $('extrasGaleria');
+  g.innerHTML = '';
+  extras.forEach((ex, k) => {
+    const c = ex.campos || {};
+    const legenda = (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '');
+    const nf = flagsResumo(ex.id).length;
+    const d = document.createElement('div');
+    d.className = 'extraThumb';
+    d.innerHTML = `<img src="${ex.data}" alt="item extra">
+      <button class="edt" data-edt="${k}" title="Editar desenho/medidas">✎</button>
+      <button class="flg" data-flg="${k}" title="Flags">⚙${nf ? ' ' + nf : ''}</button>
+      <button class="rem" data-rem="${k}" title="Remover">×</button>
+      <div class="legenda">${legenda}</div>`;
+    g.appendChild(d);
+  });
+  g.querySelectorAll('[data-edt]').forEach(el => el.onclick = () => abrirExtraDesenho(extras[+el.dataset.edt]));
+  g.querySelectorAll('[data-flg]').forEach(el => el.onclick = () => abrirWizardExtra(extras[+el.dataset.flg]));
+  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => {
+    const k = +el.dataset.rem, ex = extras[k];
+    if (!confirm('Remover este item extra?')) return;
+    if (ex) delete flags[ex.id];
+    extras.splice(k, 1); salvar(); desenharExtras();
+  });
+}
+$('btnIncluirExtra').onclick = () => {
+  if (escopo !== 'es' && escopo !== 'cm' && escopo !== 'ambos') {
+    status('Escolha primeiro Esquadrias, Contramarcos ou Os dois para incluir um item extra.');
+    return;
+  }
+  abrirExtraDesenho(null);
+};
 
 function dataUrlParaBytes(u) {
   const bin = atob(u.split(',')[1]);
@@ -1271,6 +1392,47 @@ async function gerarPdf() {
       const w = img.width * esc, h = img.height * esc;
       pg.drawText((a.tipo === 'foto' ? 'Croqui / foto ' : 'Desenho ') + (k + 1), { x: margem, y: base.height - margem - 12, size: 12, font: negrito, color: cinza });
       pg.drawImage(img, { x: (base.width - w) / 2, y: base.height - margem - titH - h, width: w, height: h });
+    }
+  }
+
+  // 5) itens extras incluídos pelo usuário, como páginas no fim do caderno
+  if (extras.length) {
+    const base = paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 };
+    const margem = 28;
+    // quebra um texto em linhas que cabem na largura
+    const quebrar = (txt, f, tam, larg) => {
+      const palavras = txt.split(' '); const linhas = []; let atual = '';
+      for (const p of palavras) {
+        const tentativa = atual ? atual + ' ' + p : p;
+        if (f.widthOfTextAtSize(tentativa, tam) > larg && atual) { linhas.push(atual); atual = p; }
+        else atual = tentativa;
+      }
+      if (atual) linhas.push(atual);
+      return linhas;
+    };
+    for (let k = 0; k < extras.length; k++) {
+      const ex = extras[k];
+      let img;
+      try { img = await doc.embedPng(dataUrlParaBytes(ex.data)); }
+      catch (e) { log('Item extra ' + (k + 1) + ': ' + e.message); continue; }
+      const pg = doc.addPage([base.width, base.height]);
+      let y = base.height - margem - 4;
+      const tituloLoc = (ex.campos && ex.campos.loc) ? ' — ' + ex.campos.loc : '';
+      pg.drawText('INCLUSÃO ' + (k + 1) + tituloLoc, { x: margem, y: y - 10, size: 13, font: negrito, color: azul });
+      y -= 26;
+      const resumo = flagsResumo(ex.id);
+      if (resumo.length) {
+        pg.drawText('Opções: ', { x: margem, y: y - 8, size: 9, font: negrito, color: cinza });
+        const texto = resumo.join(' · ');
+        const linhas = quebrar(texto, fonte, 9, base.width - margem * 2 - 48);
+        linhas.forEach((ln, li) => pg.drawText(ln, { x: margem + (li === 0 ? 48 : 0), y: y - 8 - li * 12, size: 9, font: fonte, color: cinza }));
+        y -= 8 + linhas.length * 12 + 6;
+      }
+      const topoImg = y;
+      const maxW = base.width - margem * 2, maxH = topoImg - margem;
+      const esc = Math.min(maxW / img.width, maxH / img.height);
+      const w = img.width * esc, h = img.height * esc;
+      pg.drawImage(img, { x: (base.width - w) / 2, y: topoImg - h, width: w, height: h });
     }
   }
   return await doc.save();
