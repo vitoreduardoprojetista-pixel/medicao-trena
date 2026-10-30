@@ -72,6 +72,7 @@
   <button id="btnAbrir">Abrir caderno (PDF)</button>
   <button id="btnConectar">Conectar trena</button>
 </div>
+<button id="btnTrocarTrena" class="sec" style="display:none;width:100%;font-size:13px;padding:8px;margin-bottom:8px">Procurar outra trena</button>
 <input type="file" id="arquivo" accept="application/pdf">
 <details id="painelTuya" class="item" style="margin-bottom:10px">
   <summary style="font-size:15px;font-weight:600">Chave da trena D5T (Tuya) <span id="tuyaEstado" style="font-weight:400;color:#6b7280"></span></summary>
@@ -121,7 +122,6 @@
   <div id="wizCorpo"></div>
   <div id="wizRodape">
     <button id="wizVoltar" class="sec">◀ Voltar</button>
-    <button id="wizPular" class="cl meio">Pular</button>
     <button id="wizProximo">Próximo ▶</button>
   </div>
 </div>
@@ -134,33 +134,35 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 const $ = id => document.getElementById(id);
 function log(t) { $('log').textContent = t + '\n' + $('log').textContent; }
+// Registro mais limpo para a conexão da trena: esconde os códigos técnicos de rotina.
+function logTuya(t) { if (/^Tuya: recebido código|^Tuya DP:|^Tuya: protocolo/.test(t)) return; log(t); }
 function status(t) { $('status').textContent = t; }
 
 // ---------- Catálogo de flags do caderno (seções e opções) ----------
 // xRef = x do cabeçalho da seção no PDF (para achar a seção certa na página).
 const SECOES = [
-  { h: 'LADO DE ABERTURA', xRef: 171.8, t: 'Lado de abertura (vista externa)', tipo: 'check', ops: [
+  { h: 'LADO DE ABERTURA', xRef: 171.8, esc: 'es', t: 'Lado de abertura (vista externa)', tipo: 'check', ops: [
       ['dentEsq', 'Abre p/ DENTRO à ESQUERDA'], ['foraEsq', 'Abre p/ FORA à ESQUERDA'],
       ['dentDir', 'Abre p/ DENTRO à DIREITA'], ['foraDir', 'Abre p/ FORA à DIREITA'] ] },
-  { h: 'MOTOR', xRef: 466.6, t: 'Motor (vista interna)', tipo: 'check', ops: [
+  { h: 'MOTOR', xRef: 466.6, esc: 'es', t: 'Motor (vista interna)', tipo: 'check', ops: [
       ['mEsq', 'Esquerda'], ['mDir', 'Direita'], ['v110', '110V'], ['v220', '220V'] ] },
-  { h: 'TIPO DE TRILHO', xRef: 18.8, t: 'Tipo de trilho', tipo: 'check', ops: [
+  { h: 'TIPO DE TRILHO', xRef: 18.8, esc: 'es', t: 'Tipo de trilho', tipo: 'check', ops: [
       ['convencional', 'Convencional'], ['isolado', 'Isolado'], ['embutidoU', 'Embutido em "U"'],
       ['concavoPR', 'Côncavo (PR-003)'], ['concavoDP', 'Côncavo sobreposto (DP-126)'], ['drenagem', 'Com drenagem'] ] },
-  { h: 'ACABAMENTO', xRef: 171.8, t: 'Acabamento', tipo: 'check', ops: [
+  { h: 'ACABAMENTO', xRef: 171.8, esc: 'es', t: 'Acabamento', tipo: 'check', ops: [
       ['mp347int', 'MP-347 interno'], ['mp347ext', 'MP-347 externo'], ['semArremate', 'Sem arremate'],
       ['semMeiaCana', 'Sem meia cana'], ['meiaCanaExt', 'Meia cana ext.'], ['meiaCanaInt', 'Meia cana int.'] ] },
-  { h: 'ARREMATE DE PISO', xRef: 174.7, t: 'Arremate de piso', tipo: 'check', ops: [
+  { h: 'ARREMATE DE PISO', xRef: 174.7, esc: 'es', t: 'Arremate de piso', tipo: 'check', ops: [
       ['arrCom', 'Com'], ['arrSem', 'Sem'] ] },
-  { h: 'INSTALAÇÃO DA ESQUADRIA', xRef: 171.8, t: 'Instalação da esquadria', tipo: 'check', ops: [
+  { h: 'INSTALAÇÃO DA ESQUADRIA', xRef: 171.8, esc: 'es', t: 'Instalação da esquadria', tipo: 'check', ops: [
       ['instInt', 'Interno'], ['instEixo', 'Eixo'], ['instExt', 'Externo'] ] },
-  { h: 'CONTRAMARCO', xRef: 333.4, t: 'Contramarco', tipo: 'check', ops: [
+  { h: 'CONTRAMARCO', xRef: 333.4, esc: 'cm', t: 'Contramarco', tipo: 'check', ops: [
       ['cmFechado', 'Fechado'], ['cmPortico', 'Pórtico'], ['cmSem', 'Sem contramarco'] ] },
-  { h: 'MEDIDAS DE ESQUADRIAS', xRef: 333.4, t: 'Medidas combinadas', tipo: 'check', ops: [
+  { h: 'MEDIDAS DE ESQUADRIAS', xRef: 333.4, esc: 'es', t: 'Medidas combinadas', tipo: 'check', ops: [
       ['largComb', 'Largura combinada'], ['altComb', 'Altura combinada'] ] },
-  { h: 'TELA', xRef: 466.6, t: 'Tela (vista interna)', tipo: 'check', ops: [
+  { h: 'TELA', xRef: 466.6, esc: 'es', t: 'Tela (vista interna)', tipo: 'check', ops: [
       ['telaEsq', 'Esquerda'], ['telaDir', 'Direita'], ['correDentro', 'Corre dentro'], ['correFora', 'Corre fora'] ] },
-  { h: 'INFORMAÇÕES DE ALVENARIA', xRef: 466.6, t: 'Informações de alvenaria', tipo: 'valor', ops: [
+  { h: 'INFORMAÇÕES DE ALVENARIA', xRef: 466.6, esc: 'es', t: 'Informações de alvenaria', tipo: 'valor', ops: [
       ['bandeira', 'Bandeira'], ['peitoril', 'Peitoril'], ['espParede', 'Esp. parede'] ] },
 ];
 // Posição de cada caixa de marcação: [seção, dx, dy] relativo ao cabeçalho da seção (coords do pdf.js).
@@ -182,6 +184,12 @@ const CAIXA_OFF = {
 const ALV_OFF = { bandeira: [48, -12.9], peitoril: [48, -27.1], espParede: [48, -41.2] };
 const FLAG_SEC = {}; // fid -> objeto da seção
 SECOES.forEach(s => s.ops.forEach(([fid]) => FLAG_SEC[fid] = s));
+// Seções que aparecem no assistente conforme a escolha: contramarco mostra só a flag de
+// tipo de contramarco; esquadrias mostram as outras; "os dois" mostra todas.
+function secoesDoEscopo() {
+  if (escopo !== 'es' && escopo !== 'cm') return SECOES;
+  return SECOES.filter(s => s.esc === escopo);
+}
 
 // ---------- Estado ----------
 let pdfBytes = null;
@@ -478,9 +486,10 @@ function fecharWizard() {
 
 function wizRender() {
   if (!wiz) return;
-  const it = itens[wiz.i], sec = SECOES[wiz.s];
-  const totalPassos = SECOES.length;
-  $('wizPasso').textContent = `Opções desta esquadria · passo ${wiz.s + 1} de ${totalPassos}`;
+  const secs = secoesDoEscopo();
+  const it = itens[wiz.i], sec = secs[wiz.s];
+  const totalPassos = secs.length;
+  $('wizPasso').textContent = `Opções ${escopo === 'cm' ? 'do contramarco' : 'da esquadria'} · passo ${wiz.s + 1} de ${totalPassos}`;
   $('wizQual').textContent = `${it.tipo} — ${it.loc || 'sem local'}`;
   $('wizProg').style.width = Math.round((wiz.s + 1) / totalPassos * 100) + '%';
   const f = flags[wiz.i] = flags[wiz.i] || {};
@@ -514,11 +523,10 @@ function wizRender() {
 }
 const wizAvancar = () => {
   if (!wiz) return;
-  if (wiz.s < SECOES.length - 1) { wiz.s++; wizRender(); }
+  if (wiz.s < secoesDoEscopo().length - 1) { wiz.s++; wizRender(); }
   else { fecharWizard(); }   // terminou as flags desta esquadria -> volta à lista
 };
 $('wizProximo').onclick = wizAvancar;
-$('wizPular').onclick = wizAvancar;
 $('wizVoltar').onclick = () => {
   if (!wiz) return;
   if (wiz.s > 0) { wiz.s--; wizRender(); }
@@ -573,55 +581,82 @@ function tratarDados(tipo, dv, origem) {
   if (mm) adicionarMedida(mm);
 }
 
-$('btnConectar').onclick = async () => {
-  if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
-  try {
-    status('Procurando a trena... escolha ela na lista.');
-    const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: CANDIDATOS });
-    log('Dispositivo: ' + device.name);
-    device.addEventListener('gattserverdisconnected', () => status('Trena desconectada. Toque em Conectar trena de novo.'));
-    status('Conectando em ' + device.name + '...');
-    const server = await device.gatt.connect();
+// Guarda e reconecta a trena sem precisar escolher na lista toda vez.
+function atualizarBotaoTrena() {
+  const salvo = lerJson('trena_device');
+  $('btnConectar').textContent = salvo ? '🔗 Conectar ' + (salvo.label || 'trena') : 'Conectar trena';
+  $('btnTrocarTrena').style.display = salvo ? 'block' : 'none';
+}
 
-    const tuyaNot = await tentar(server, Tuya.SERV, Tuya.NOTIFY);
-    if (tuyaNot) { await conectarTuya(server, tuyaNot, device.name); return; }
+async function conectarDispositivo(device) {
+  device.addEventListener('gattserverdisconnected', () => status('Trena desconectada. Toque em Conectar para ligar de novo.'));
+  status('Conectando na trena...');
+  const server = await device.gatt.connect();
+  const salvarTrena = label => { gravarJson('trena_device', { id: device.id, name: device.name || '', label }); atualizarBotaoTrena(); };
 
-    let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto';
-    if (!car) { car = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); tipo = 'bosch'; }
-    if (car) {
-      car.addEventListener('characteristicvaluechanged', ev => tratarDados(tipo, ev.target.value));
-      await car.startNotifications();
-      if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a]));
-      status('Trena ' + device.name + ' conectada. Toque num campo e meça.');
-      return;
-    }
+  // 1) Mileseey D5T (chip Tuya)
+  const tuyaNot = await tentar(server, Tuya.SERV, Tuya.NOTIFY);
+  if (tuyaNot) { salvarTrena('Mileseey'); await conectarTuya(server, tuyaNot, 'Mileseey'); return; }
 
-    const servicos = await server.getPrimaryServices().catch(() => []);
-    log('Serviços: ' + (servicos.map(sv => nomeUuid(sv.uuid)).join(', ') || 'nenhum da lista'));
-    let ouvindo = 0;
-    for (const sv of servicos) {
-      const cars = await sv.getCharacteristics().catch(() => []);
-      for (const c of cars) {
-        const pr = c.properties;
-        const props = ['read', 'write', 'writeWithoutResponse', 'notify', 'indicate'].filter(k => pr[k]).join('/');
-        log('  ' + nomeUuid(sv.uuid) + ' → ' + nomeUuid(c.uuid) + ' (' + props + ')');
-        if (pr.notify || pr.indicate) {
-          try {
-            const origem = nomeUuid(c.uuid);
-            c.addEventListener('characteristicvaluechanged', ev => tratarDados('texto', ev.target.value, origem));
-            await c.startNotifications();
-            ouvindo++;
-          } catch (e) { log('  não consegui ouvir ' + nomeUuid(c.uuid) + ': ' + e.message); }
-        }
+  // 2) protocolos abertos (D5T texto / Bosch)
+  let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto', label = device.name || 'trena';
+  if (!car) { const b = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); if (b) { car = b; tipo = 'bosch'; label = 'Bosch'; } }
+  if (car) {
+    car.addEventListener('characteristicvaluechanged', ev => tratarDados(tipo, ev.target.value));
+    await car.startNotifications();
+    if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a]));
+    salvarTrena(label);
+    status('Trena ' + label + ' conectada. Toque num campo e meça.');
+    return;
+  }
+
+  // 3) desconhecida: modo teste (mostra os canais no registro para depurar)
+  const servicos = await server.getPrimaryServices().catch(() => []);
+  log('Serviços: ' + (servicos.map(sv => nomeUuid(sv.uuid)).join(', ') || 'nenhum da lista'));
+  let ouvindo = 0;
+  for (const sv of servicos) {
+    const cars = await sv.getCharacteristics().catch(() => []);
+    for (const c of cars) {
+      const pr = c.properties;
+      log('  ' + nomeUuid(sv.uuid) + ' → ' + nomeUuid(c.uuid) + ' (' + ['read', 'write', 'writeWithoutResponse', 'notify', 'indicate'].filter(k => pr[k]).join('/') + ')');
+      if (pr.notify || pr.indicate) {
+        try {
+          const origem = nomeUuid(c.uuid);
+          c.addEventListener('characteristicvaluechanged', ev => tratarDados('texto', ev.target.value, origem));
+          await c.startNotifications(); ouvindo++;
+        } catch (e) { log('  não consegui ouvir ' + nomeUuid(c.uuid) + ': ' + e.message); }
       }
     }
-    if (ouvindo) status(`Conectado em ${device.name} (modo teste). Faça uma medida e me mande um print do registro cinza lá embaixo, ou toque em "Copiar registro".`);
-    else throw new Error('Não achei o canal de dados da trena ' + device.name + '. Toque em "Copiar registro" e me mande.');
+  }
+  if (ouvindo) status(`Conectado (modo teste). Faça uma medida e me mande um print do registro cinza, ou toque em "Copiar registro".`);
+  else throw new Error('Não achei o canal de dados da trena. Toque em "Copiar registro" e me mande.');
+}
+
+async function escolherTrena() {
+  if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
+  status('Procurando a trena... escolha ela na lista.');
+  const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: CANDIDATOS });
+  await conectarDispositivo(device);
+}
+
+async function conectarTrena() {
+  try {
+    const salvo = lerJson('trena_device');
+    if (salvo && navigator.bluetooth && navigator.bluetooth.getDevices) {
+      const devs = await navigator.bluetooth.getDevices().catch(() => []);
+      const d = devs.find(x => x.id === salvo.id);
+      if (d) { status('Reconectando ' + (salvo.label || 'a trena') + '...'); await conectarDispositivo(d); return; }
+    }
+    await escolherTrena(); // 1ª vez, ou o navegador não guardou: escolhe na lista
   } catch (e) {
-    status('Erro: ' + e.message);
+    if (e.name === 'NotFoundError') { status('Nenhuma trena escolhida.'); return; }
+    status('Erro ao conectar: ' + e.message);
     log('Erro: ' + e.name + ' - ' + e.message);
   }
-};
+}
+$('btnConectar').onclick = conectarTrena;
+$('btnTrocarTrena').onclick = () => escolherTrena().catch(e => { if (e.name !== 'NotFoundError') status('Erro: ' + e.message); });
+atualizarBotaoTrena();
 
 // ---------- Trena Tuya ----------
 function lerJson(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
@@ -668,7 +703,7 @@ async function conectarTuya(server, notif, nome) {
   const cred = lerJson('tuya_cred');
   if (!cred) { $('painelTuya').open = true; throw new Error('Essa trena usa o chip Tuya. Cole a chave dela em "Chave da trena D5T" e conecte de novo.'); }
   const escr = await tentar(server, Tuya.SERV, Tuya.WRITE);
-  const t = new Tuya.TuyaTrena(cred, log);
+  const t = new Tuya.TuyaTrena(cred, logTuya);
   t.escrever = p => escr.writeValueWithoutResponse ? escr.writeValueWithoutResponse(p) : escr.writeValue(p);
   let fila = Promise.resolve();
   notif.addEventListener('characteristicvaluechanged', ev => {
