@@ -104,6 +104,11 @@
   .medirMini { display: none; background: #1f6feb; color: #fff; border: 0; border-radius: 8px; font-size: 15px; padding: 0 10px; }
   .medirMini.armado { background: #16a34a; }
   #draw.modoExtra .medirMini { display: inline-block; }
+  #extraFinal { display: none; background: #fff; padding: 8px 10px; align-items: center; gap: 8px; border-top: 1px solid #e5e7eb; }
+  #draw.modoExtra #extraFinal { display: flex; }
+  #extraFinal > span { font-size: 13px; color: #6b7280; }
+  #extraFinal .fin { font-size: 13px; padding: 7px 10px; background: #e5e7eb; color: #111; }
+  #extraFinal .fin.on { background: #1f6feb; color: #fff; }
   #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
   #drawCanvas { background: #fff; border-radius: 6px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 2px 12px rgba(0,0,0,.4); }
   /* Botão de configurações no topo */
@@ -222,6 +227,11 @@
     <label>Localização<input id="dcLoc" placeholder="ex.: Sala"></label>
     <label>Peitoril<input id="dcPeit" inputmode="numeric" placeholder="ex.: 1000"></label>
     <label>Observações<input id="dcObs" placeholder="anotação"></label>
+  </div>
+  <div id="extraFinal">
+    <span>Finalidade:</span>
+    <button type="button" id="finOrc" class="fin on">Para orçamento</button>
+    <button type="button" id="finFab" class="fin">Para fabricação</button>
   </div>
   <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
 </div>
@@ -1149,7 +1159,9 @@ $('fotoInput').onchange = async e => {
 let drawCtx = null, desenhando = false, editIndex = null;
 let drawExtra = null;   // null = croqui/anexo normal; { ex } quando o desenho é de um item extra (ex=null se novo)
 let alvoExtra = null;   // 'L' | 'A': campo do item extra armado p/ receber a próxima medida da trena
+let drawFinalidade = 'orc';  // 'orc' | 'fab' do item extra em edição
 const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs'];
+function setFinalidade(f) { drawFinalidade = f; $('finOrc').classList.toggle('on', f === 'orc'); $('finFab').classList.toggle('on', f === 'fab'); }
 function fecharModoExtra() { drawExtra = null; alvoExtra = null; $('draw').classList.remove('modoExtra'); $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado'); }
 function prepararCanvas() {
   const cv = $('drawCanvas');
@@ -1179,6 +1191,7 @@ function abrirExtraDesenho(ex) {
   $('draw').classList.add('modoExtra');
   $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado');
   $('drawTitulo').textContent = ex ? 'Editar item extra' : 'Novo item extra';
+  setFinalidade((ex && ex.finalidade) || 'orc');
   prepararCanvas();
   preencherCampos(ex && ex.campos);
   $('draw').style.display = 'flex';
@@ -1230,6 +1243,8 @@ $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle 
 $('drawCancelar').onclick = () => { editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
 $('dcLMedir').onclick = () => { alvoExtra = 'L'; $('dcLMedir').classList.add('armado'); $('dcAMedir').classList.remove('armado'); status('Meça com a trena — vai para a Largura.'); };
 $('dcAMedir').onclick = () => { alvoExtra = 'A'; $('dcAMedir').classList.add('armado'); $('dcLMedir').classList.remove('armado'); status('Meça com a trena — vai para a Altura.'); };
+$('finOrc').onclick = () => setFinalidade('orc');
+$('finFab').onclick = () => setFinalidade('fab');
 $('drawSalvar').onclick = () => {
   const campos = lerCamposDesenho();
   const base = $('drawCanvas').toDataURL('image/png');
@@ -1237,8 +1252,8 @@ $('drawSalvar').onclick = () => {
   if (drawExtra) {
     // Item extra: cria/atualiza e segue para as flags.
     let ex = drawExtra.ex;
-    if (ex) { ex.data = data; ex.base = base; ex.campos = campos; }
-    else { ex = { id: 'x' + Date.now() + Math.floor(Math.random() * 1000), data, base, campos }; extras.push(ex); }
+    if (ex) { ex.data = data; ex.base = base; ex.campos = campos; ex.finalidade = drawFinalidade; ex.escopo = escopo; }
+    else { ex = { id: 'x' + Date.now() + Math.floor(Math.random() * 1000), data, base, campos, finalidade: drawFinalidade, escopo }; extras.push(ex); }
     fecharModoExtra();
     $('draw').style.display = 'none';
     salvarComAviso(); desenharExtras();
@@ -1281,7 +1296,8 @@ function desenharExtras() {
   g.innerHTML = '';
   extras.forEach((ex, k) => {
     const c = ex.campos || {};
-    const legenda = (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '');
+    const fin = ex.finalidade === 'fab' ? 'fabric.' : 'orçam.';
+    const legenda = (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '') + ` · ${fin}`;
     const nf = flagsResumo(ex.id).length;
     const d = document.createElement('div');
     d.className = 'extraThumb';
@@ -1322,7 +1338,7 @@ async function gerarPdf() {
   const doc = await PDFDocument.load(pdfBytes);
   const fonte = await doc.embedFont(StandardFonts.Helvetica);
   const negrito = await doc.embedFont(StandardFonts.HelveticaBold);
-  const azul = rgb(0.05, 0.25, 0.75), cinza = rgb(0.35, 0.35, 0.35);
+  const azul = rgb(0.05, 0.25, 0.75), cinza = rgb(0.35, 0.35, 0.35), branco = rgb(1, 1, 1), preto = rgb(0, 0, 0);
   const hoje = new Date().toLocaleDateString('pt-BR');
   const paginas = doc.getPages();
   const centro = (pg, txt, f, tam, cx, y, cor) => pg.drawText(txt, { x: cx - f.widthOfTextAtSize(txt, tam) / 2, y, size: tam, font: f, color: cor });
@@ -1395,47 +1411,111 @@ async function gerarPdf() {
     }
   }
 
-  // 5) itens extras incluídos pelo usuário, como páginas no fim do caderno
+  // 5) itens extras no formato do caderno: clona uma página-molde EM BRANCO, apaga o texto
+  //    do orçamento do molde e carimba o item extra (croqui, flags e medidas no lugar certo).
   if (extras.length) {
-    const base = paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 };
-    const margem = 28;
-    // quebra um texto em linhas que cabem na largura
-    const quebrar = (txt, f, tam, larg) => {
-      const palavras = txt.split(' '); const linhas = []; let atual = '';
-      for (const p of palavras) {
-        const tentativa = atual ? atual + ' ' + p : p;
-        if (f.widthOfTextAtSize(tentativa, tam) > larg && atual) { linhas.push(atual); atual = p; }
-        else atual = tentativa;
+    const molde = escolherMolde();
+    if (molde) {
+      const moldeDoc = await PDFDocument.load(pdfBytes); // molde pristino (sem as medidas já desenhadas)
+      const slots = molde.slots;
+      const porPag = Math.max(1, slots.length);
+      // tapa um slot inteiro (quando a página-molde tem um slot sobrando sem item extra)
+      const taparSlot = (pg, slot) => {
+        const lado = slot.sec['LADO DE ABERTURA']; if (!lado) return;
+        const yBaixo = (slot.unidades.length ? Math.min(...slot.unidades.map(u => u.y)) : lado.y - 160) - 24;
+        pg.drawRectangle({ x: 8, y: yBaixo, width: 579, height: (lado.y + 95) - yBaixo, color: branco });
+      };
+      for (let g = 0; g < extras.length; g += porPag) {
+        const [copiada] = await doc.copyPages(moldeDoc, [molde.pagina]);
+        doc.addPage(copiada);
+        if (molde.temCabecalhoObra) { // molde é a 1ª página de conteúdo: tapa o cabeçalho da obra em cima
+          const topo = slots[0].sec['LADO DE ABERTURA'];
+          if (topo) copiada.drawRectangle({ x: 0, y: topo.y + 78, width: 595, height: 842 - (topo.y + 78), color: branco });
+        }
+        copiada.drawRectangle({ x: 500, y: 16, width: 92, height: 26, color: branco }); // rodapé "N / 24"
+        for (let s = 0; s < slots.length; s++) {
+          const ex = extras[g + s];
+          if (!ex) { taparSlot(copiada, slots[s]); continue; }
+          await carimbarExtra(copiada, slots[s], ex);
+        }
       }
-      if (atual) linhas.push(atual);
-      return linhas;
-    };
-    for (let k = 0; k < extras.length; k++) {
-      const ex = extras[k];
-      let img;
-      try { img = await doc.embedPng(dataUrlParaBytes(ex.data)); }
-      catch (e) { log('Item extra ' + (k + 1) + ': ' + e.message); continue; }
-      const pg = doc.addPage([base.width, base.height]);
-      let y = base.height - margem - 4;
-      const tituloLoc = (ex.campos && ex.campos.loc) ? ' — ' + ex.campos.loc : '';
-      pg.drawText('INCLUSÃO ' + (k + 1) + tituloLoc, { x: margem, y: y - 10, size: 13, font: negrito, color: azul });
-      y -= 26;
-      const resumo = flagsResumo(ex.id);
-      if (resumo.length) {
-        pg.drawText('Opções: ', { x: margem, y: y - 8, size: 9, font: negrito, color: cinza });
-        const texto = resumo.join(' · ');
-        const linhas = quebrar(texto, fonte, 9, base.width - margem * 2 - 48);
-        linhas.forEach((ln, li) => pg.drawText(ln, { x: margem + (li === 0 ? 48 : 0), y: y - 8 - li * 12, size: 9, font: fonte, color: cinza }));
-        y -= 8 + linhas.length * 12 + 6;
-      }
-      const topoImg = y;
-      const maxW = base.width - margem * 2, maxH = topoImg - margem;
-      const esc = Math.min(maxW / img.width, maxH / img.height);
-      const w = img.width * esc, h = img.height * esc;
-      pg.drawImage(img, { x: (base.width - w) / 2, y: topoImg - h, width: w, height: h });
     }
   }
   return await doc.save();
+
+  // Escolhe a página que serve de molde para os itens extras: de preferência uma página que
+  // NÃO seja a primeira de conteúdo (pra não ter o cabeçalho da obra) e que tenha 2 slots.
+  function escolherMolde() {
+    const porPag = {};
+    itens.forEach(it => { if (it.sec['LADO DE ABERTURA'] && it.unidades.length) (porPag[it.pagina] = porPag[it.pagina] || []).push(it); });
+    const pags = Object.keys(porPag).map(Number).sort((a, b) => a - b);
+    if (!pags.length) return null;
+    const primeira = pags[0];
+    let escolhida = pags.find(p => p !== primeira && porPag[p].length >= 2);
+    if (escolhida == null) escolhida = pags.find(p => p !== primeira);
+    if (escolhida == null) escolhida = primeira;
+    const slots = porPag[escolhida].slice().sort((a, b) => b.sec['LADO DE ABERTURA'].y - a.sec['LADO DE ABERTURA'].y);
+    return { pagina: escolhida, slots, temCabecalhoObra: escolhida === primeira };
+  }
+
+  // Carimba um item extra no slot (geometria de um item real) de uma página-molde clonada.
+  async function carimbarExtra(pg, slot, ex) {
+    const sec = slot.sec, cols = slot.cols;
+    const lado = sec['LADO DE ABERTURA'], tipoT = sec['TIPO DE TRILHO'] || { x: 18.8, y: lado.y - 61 };
+    const c = ex.campos || {}, esc = ex.escopo || escopo;
+    // máscaras: apaga o texto do orçamento do molde
+    pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
+    const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 92;
+    pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
+    if (slot.unidades.length) {
+      // tapa a linha de "previsto" do molde (uma acima da 1ª linha de medida) + todas as linhas de medida,
+      // sem alcançar o cabeçalho L/H/DATA (que fica ~15pt acima da linha de previsto).
+      const uys = slot.unidades.map(u => u.y);
+      const yBot = Math.min(...uys) - 6, yTop = Math.max(...uys) + 29, hh = yTop - yBot;
+      [[32, 90], [122, 72], [300, 140], [440, 70]].forEach(([x, w]) => pg.drawRectangle({ x, y: yBot, width: w, height: hh, color: branco }));
+    }
+    // rótulo no topo da peça
+    pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
+    pg.drawText('INCLUSÃO' + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
+    // croqui: desenho do usuário
+    if (ex.base) {
+      try {
+        const img = await doc.embedPng(dataUrlParaBytes(ex.base));
+        const maxW = cqX1 - cqX - 4, maxH = cqYt - cqYb - 4;
+        const escI = Math.min(maxW / img.width, maxH / img.height);
+        const w = img.width * escI, h = img.height * escI;
+        pg.drawImage(img, { x: cqX + (maxW - w) / 2 + 2, y: cqYb + (maxH - h) / 2 + 2, width: w, height: h });
+      } catch (e) { log('Croqui do extra: ' + e.message); }
+    }
+    // medidas na 1ª linha da tabela
+    const un0 = slot.unidades[0];
+    if (un0) {
+      if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.cmL, un0.y, azul);
+      if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.cmH, un0.y, azul);
+      if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.esL, un0.y, azul);
+      if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.esH, un0.y, azul);
+      if (c.qt) centro(pg, String(c.qt), fonte, 9, 98, un0.y, preto);
+      if (c.loc) centro(pg, String(c.loc), fonte, 8, (cols.cmD + cols.esL) / 2, un0.y, preto);
+      un0.datas.forEach((d, k) => {
+        const mostra = k === 0 ? (esc === 'cm' || esc === 'ambos') : (esc === 'es' || esc === 'ambos');
+        if (!mostra) return;
+        pg.drawRectangle({ x: d.x - 1, y: d.y - 2, width: d.w + 2, height: d.h + 3, color: branco });
+        centro(pg, hoje, fonte, 7, d.x + d.w / 2, d.y, azul);
+      });
+    }
+    // OBS
+    if (c.obs && slot.obsPos) pg.drawText(String(c.obs).replace(/\s+/g, ' ').slice(0, 95), { x: slot.obsPos.x, y: slot.obsPos.y, size: 8, font: fonte, color: azul });
+    // flags (mesmo esquema dos itens reais); peitoril do desenho entra se não houver flag de peitoril
+    const f = Object.assign({}, flags[ex.id] || {});
+    if (c.peit && !f.peitoril) f.peitoril = String(c.peit);
+    for (const fid of Object.keys(f)) {
+      if (!f[fid]) continue;
+      const fsec = FLAG_SEC[fid]; if (!fsec) continue;
+      const anc = sec[fsec.h]; if (!anc) continue;
+      if (fsec.tipo === 'valor') { const off = ALV_OFF[fid]; if (off) centro(pg, String(f[fid]), negrito, 9, anc.x + off[0], anc.y + off[1], azul); }
+      else { const off = CAIXA_OFF[fid]; if (off) marcarX(pg, anc.x + off[1], anc.y + off[2]); }
+    }
+  }
 }
 
 $('btnGerar').onclick = async () => {
