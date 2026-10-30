@@ -448,6 +448,12 @@ async function abrirPdf(file) {
   itens.forEach((it, idx) => it.id = idx); // id estável na ordem em que o PDF foi lido
   carregarSalvo();
   aplicarOrdemSalva();
+  // Template em branco por O.S.: na 1ª vez guarda o PDF aberto; depois sempre gera a partir dele
+  // (mesmo que o Vitor abra uma cópia já preenchida, o preenchimento sai limpo, sem dobrar).
+  const tplKey = 'tpl_' + (obra.os || nomeArquivo);
+  const tpl = await idbGet(tplKey);
+  if (tpl && tpl.bytes) { pdfBytes = tpl.bytes instanceof Uint8Array ? tpl.bytes : new Uint8Array(tpl.bytes); if (tpl.nome) nomeArquivo = tpl.nome; }
+  else { idbSet(tplKey, { bytes: pdfBytes.slice(), nome: nomeArquivo }); }
   const nUn = itens.reduce((s, i) => s + i.unidades.length, 0);
   status(`${itens.length} itens e ${nUn} unidades.`);
   log('Itens lidos: ' + itens.map(i => i.tipo).join(', '));
@@ -853,6 +859,29 @@ atualizarBotaoTrena();
 // ---------- Trena Tuya ----------
 function lerJson(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
 function gravarJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+
+// Guarda o caderno EM BRANCO (template) por O.S. no IndexedDB. Assim o PDF é sempre
+// regerado a partir do branco + os dados salvos, nunca preenchendo duas vezes.
+function idbDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('medicao', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('cadernos');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) {
+  try {
+    const db = await idbDB();
+    return await new Promise((res, rej) => { const t = db.transaction('cadernos').objectStore('cadernos').get(k); t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error); });
+  } catch (e) { return null; }
+}
+async function idbSet(k, v) {
+  try {
+    const db = await idbDB();
+    await new Promise((res, rej) => { const t = db.transaction('cadernos', 'readwrite').objectStore('cadernos').put(v, k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); });
+  } catch (e) { }
+}
 function mostrarEstadoTuya() {
   const c = lerJson('tuya_cred'), m = lerJson('tuya_dp');
   $('tuyaEstado').textContent = c ? '· chave salva' + (m ? ', calibrada' : '') : '· sem chave';
@@ -1226,7 +1255,8 @@ $('btnGerar').onclick = async () => {
   try {
     status('Gerando PDF...');
     const bytes = await gerarPdf();
-    const nome = nomeArquivo.replace(/\.pdf$/i, '') + ' - MEDIDO.pdf';
+    // Nome = o nome original do caderno, pra você poder regravar por cima (salvando na mesma pasta).
+    const nome = /\.pdf$/i.test(nomeArquivo) ? nomeArquivo : (nomeArquivo || 'caderno') + '.pdf';
     const arq = new File([bytes], nome, { type: 'application/pdf' });
     if (navigator.canShare && navigator.canShare({ files: [arq] })) {
       await navigator.share({ files: [arq], title: nome });
@@ -1234,7 +1264,7 @@ $('btnGerar').onclick = async () => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(arq); a.download = nome; a.click();
     }
-    status('PDF gerado: ' + nome);
+    status('PDF gerado: ' + nome + '. Pra regravar por cima, salve na mesma pasta com o mesmo nome.');
   } catch (e) {
     if (e.name !== 'AbortError') { status('Erro ao gerar o PDF: ' + e.message); log(e.stack); }
   }
