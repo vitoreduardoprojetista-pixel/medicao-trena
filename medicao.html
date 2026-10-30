@@ -181,7 +181,8 @@ const CAIXA_OFF = {
   telaEsq: ['TELA', 6.3, -10.6], telaDir: ['TELA', 64.4, -10.6], correDentro: ['TELA', 6.3, -22.7], correFora: ['TELA', 6.3, -34.7],
 };
 // Alvenaria: onde escrever o valor (dx após o cabeçalho, dy por campo).
-const ALV_OFF = { bandeira: [48, -12.9], peitoril: [48, -27.1], espParede: [48, -41.2] };
+// [dx até o MEIO da linha de valor, dy da base do texto] relativo ao cabeçalho da seção.
+const ALV_OFF = { bandeira: [82.1, -14.2], peitoril: [82.1, -28.4], espParede: [82.1, -42.6] };
 const FLAG_SEC = {}; // fid -> objeto da seção
 SECOES.forEach(s => s.ops.forEach(([fid]) => FLAG_SEC[fid] = s));
 // Seções que aparecem no assistente conforme a escolha: contramarco mostra só a flag de
@@ -767,14 +768,20 @@ async function gerarPdf() {
       const anc = it.sec[sec.h]; if (!anc) continue;
       if (sec.tipo === 'valor') {
         const off = ALV_OFF[fid]; if (!off) continue;
-        pg.drawText(String(f[fid]), { x: anc.x + off[0], y: anc.y + off[1] - 2, size: 7, font: fonte, color: azul });
+        centro(pg, String(f[fid]), negrito, 9, anc.x + off[0], anc.y + off[1], azul);
       } else {
         const off = CAIXA_OFF[fid]; if (!off) continue;
         marcarX(pg, anc.x + off[1], anc.y + off[2]);
       }
     }
     // 3) OBS
-    if (obs[i] && it.obsPos) pg.drawText(obs[i].replace(/\s+/g, ' ').slice(0, 140), { x: it.obsPos.x, y: it.obsPos.y, size: 7, font: fonte, color: azul });
+    if (obs[i] && it.obsPos) {
+      const txt = obs[i].replace(/\s+/g, ' ').slice(0, 140);
+      const dir = 577, meio = (it.obsPos.x + dir) / 2, larguraMax = dir - it.obsPos.x;
+      let tam = 9;
+      while (tam > 5 && negrito.widthOfTextAtSize(txt, tam) > larguraMax) tam -= 0.5;
+      centro(pg, txt, negrito, tam, meio, it.obsPos.y, azul);
+    }
   });
   return await doc.save();
 }
