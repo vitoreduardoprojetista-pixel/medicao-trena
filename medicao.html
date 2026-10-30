@@ -756,9 +756,34 @@ function tratarDados(tipo, dv, origem) {
 // Os 4 botões têm rótulo fixo; manter a função (chamada ao salvar a trena) como no-op.
 function atualizarBotaoTrena() { }
 
-async function conectarDispositivo(device) {
-  device.addEventListener('gattserverdisconnected', () => status('Trena desconectada. Toque em Conectar para ligar de novo.'));
-  status('Conectando na trena...');
+let trenaDevice = null;        // a trena conectada no momento (p/ reconexão automática)
+let tentandoReconectar = false;
+
+// Fica tentando reconectar sozinho enquanto a trena estiver desligada (ela apaga sozinha no ócio).
+// Quando o Vitor religa, o device.gatt.connect() passa a funcionar e refaz o aperto de mão.
+async function reconectarLoop(device) {
+  if (tentandoReconectar) return;
+  tentandoReconectar = true;
+  for (let i = 1; trenaDevice === device && !device.gatt.connected; i++) {
+    if (i > 200) { status('Não reconectou. Religue a trena e toque em Conectar.'); break; } // ~13 min
+    try {
+      await conectarDispositivo(device, true);
+      if (device.gatt.connected) break; // conectou e refez o setup
+    } catch (e) { /* ainda desligada: tenta de novo */ }
+    await new Promise(r => setTimeout(r, i < 20 ? 3000 : 6000));
+  }
+  tentandoReconectar = false;
+}
+
+async function conectarDispositivo(device, reconexao) {
+  trenaDevice = device;
+  if (!device.__wired) {
+    device.__wired = true;
+    device.addEventListener('gattserverdisconnected', () => {
+      if (trenaDevice === device) { status('Trena desligou. Vou reconectar sozinho quando você religar...'); reconectarLoop(device); }
+    });
+  }
+  if (!reconexao) status('Conectando na trena...');
   const server = await device.gatt.connect();
   const salvarTrena = label => { gravarJson('trena_device', { id: device.id, name: device.name || '', label }); atualizarBotaoTrena(); };
 
