@@ -14,6 +14,8 @@
   button.cl { background: #eef1f5; color: #1d2330; border: 2px solid #d1d5db; }
   .linha { display: flex; gap: 8px; margin-bottom: 8px; }
   .linha > * { flex: 1; }
+  .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .botoes button { min-height: 52px; font-size: 15px; }
   #status { padding: 8px 10px; border-radius: 8px; background: #fff; margin-bottom: 10px; font-size: 14px; }
   #obra { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 14px; display: none; }
   #escopoBar { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; display: none; }
@@ -78,6 +80,10 @@
   #drawTopo > span { font-size: 15px; font-weight: 600; }
   #drawTopo > div { display: flex; gap: 6px; }
   #drawTopo button { font-size: 14px; padding: 8px 12px; }
+  #drawCampos { background: #fff; padding: 8px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+  #drawCampos label { font-size: 11px; color: #6b7280; display: flex; flex-direction: column; gap: 2px; }
+  #drawCampos label.full { grid-column: 1 / -1; }
+  #drawCampos input { font-size: 15px; padding: 7px 8px; border: 1px solid #d1d5db; border-radius: 8px; }
   #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
   #drawCanvas { background: #fff; border-radius: 6px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 2px 12px rgba(0,0,0,.4); }
   /* Botão de configurações no topo */
@@ -89,6 +95,12 @@
   #configTopo > span { font-size: 16px; font-weight: 600; }
   #configTopo button { font-size: 14px; padding: 8px 14px; }
   #configCorpo { flex: 1; overflow: auto; padding: 14px; }
+  /* Painel de opções do caderno */
+  #opcoes { position: fixed; inset: 0; background: #f4f5f7; z-index: 56; display: none; flex-direction: column; }
+  #opcoesTopo { background: #1d2330; color: #fff; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; }
+  #opcoesTopo > span { font-size: 16px; font-weight: 600; }
+  #opcoesTopo button { font-size: 14px; padding: 8px 14px; }
+  #opcoesCorpo { flex: 1; overflow: auto; padding: 14px; }
   /* Tela de ordenar as esquadrias */
   #ordem { position: fixed; inset: 0; background: #f4f5f7; z-index: 58; display: none; flex-direction: column; }
   #ordemTopo { background: #1d2330; color: #fff; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -109,12 +121,12 @@
 <body>
 <h1>Medição de Esquadrias <button id="btnConfig" title="Configurações">⚙</button></h1>
 <div id="status">1) Abra o caderno de medição (PDF do CEM). 2) Conecte a trena. 3) Toque num campo e meça.</div>
-<div class="linha">
-  <button id="btnAbrir">Abrir caderno (PDF)</button>
-  <button id="btnConectar">Conectar trena</button>
+<div class="botoes">
+  <button id="btnConectar">Conectar Mileseey</button>
+  <button id="btnBosch">Conectar Bosch</button>
+  <button id="btnTrocarTrena">Conectar outra trena</button>
+  <button id="btnAbrir">Abrir caderno</button>
 </div>
-<div class="linha"><button id="btnBosch">📐 Conectar Bosch</button></div>
-<button id="btnTrocarTrena" class="sec" style="display:none;width:100%;font-size:13px;padding:8px;margin-bottom:8px">Procurar outra trena</button>
 <input type="file" id="arquivo" accept="application/pdf">
 <div id="obra"></div>
 <div id="escopoBar">
@@ -138,7 +150,7 @@
 <input type="file" id="fotoInput" accept="image/*" capture="environment" multiple>
 <div class="linha" id="acoesFim2" style="display:none">
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
-  <button id="btnZerar" class="sec">Apagar tudo desta obra</button>
+  <button id="btnOpcoes" class="sec">Opções</button>
 </div>
 <button id="btnCopiarLog" class="sec" style="width:100%;margin-top:12px">Copiar registro</button>
 <div id="log"></div>
@@ -178,6 +190,12 @@
       <button id="drawSalvar" class="ok">Salvar</button>
     </div>
   </div>
+  <div id="drawCampos">
+    <label>Largura x Altura<input id="dcLA" placeholder="ex.: 1200 x 1500"></label>
+    <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
+    <label>Localização<input id="dcLoc" placeholder="ex.: Sala"></label>
+    <label class="full">Observações<input id="dcObs" placeholder="anotação"></label>
+  </div>
   <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
 </div>
 
@@ -202,6 +220,15 @@
   <div id="ordemTopo"><span>Ordem de medição</span><button id="ordemOk" class="ok">Usar esta ordem ▶</button></div>
   <div id="ordemAjuda">Arraste pela alça ⠿ (ou use ▲▼) para deixar as esquadrias na ordem em que você vai medir. O caderno aparece nesta ordem.</div>
   <div id="ordemLista"></div>
+</div>
+
+<!-- Opções do caderno (ações menos usadas / destrutivas) -->
+<div id="opcoes">
+  <div id="opcoesTopo"><span>Opções do caderno</span><button id="opcoesFechar" class="sec">Fechar</button></div>
+  <div id="opcoesCorpo">
+    <button id="btnZerar" style="width:100%;background:#dc2626">Apagar tudo desta obra</button>
+    <div style="font-size:12px;color:#6b7280;margin-top:8px">Apaga as medidas, flags, observações e anexos desta O.S. neste celular. Não dá para desfazer.</div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -568,9 +595,11 @@ $('btnDigitar').onclick = () => {
 };
 $('btnAbrir').onclick = () => $('arquivo').click();
 $('arquivo').onchange = e => { if (e.target.files[0]) abrirPdf(e.target.files[0]).catch(err => { status('Erro ao ler o PDF: ' + err.message); log(err.stack); }); };
+$('btnOpcoes').onclick = () => { $('opcoes').style.display = 'flex'; };
+$('opcoesFechar').onclick = () => { $('opcoes').style.display = 'none'; };
 $('btnZerar').onclick = () => {
-  if (!confirm('Apagar todas as medidas e opções desta obra neste celular?')) return;
-  medidas = {}; obs = {}; flags = {}; salvar(); desenharTudo();
+  if (!confirm('Apagar todas as medidas, flags, observações e anexos desta obra neste celular?')) return;
+  medidas = {}; obs = {}; flags = {}; anexos = []; salvar(); $('opcoes').style.display = 'none'; desenharTudo();
 };
 $('escopoBar').querySelectorAll('button').forEach(b => b.onclick = () => {
   escopo = b.dataset.escopo; ativo = null; $('barra').style.display = 'none'; salvar(); desenharTudo();
@@ -684,12 +713,8 @@ function tratarDados(tipo, dv, origem) {
   if (mm) adicionarMedida(mm);
 }
 
-// Guarda e reconecta a trena sem precisar escolher na lista toda vez.
-function atualizarBotaoTrena() {
-  const salvo = lerJson('trena_device');
-  $('btnConectar').textContent = salvo ? '🔗 Conectar ' + (salvo.label || 'trena') : 'Conectar trena';
-  $('btnTrocarTrena').style.display = salvo ? 'block' : 'none';
-}
+// Os 4 botões têm rótulo fixo; manter a função (chamada ao salvar a trena) como no-op.
+function atualizarBotaoTrena() { }
 
 async function conectarDispositivo(device) {
   device.addEventListener('gattserverdisconnected', () => status('Trena desconectada. Toque em Conectar para ligar de novo.'));
@@ -754,7 +779,7 @@ async function pedirBosch() {
       optionalServices: CANDIDATOS
     });
   } catch (e) {
-    if (e.name === 'NotFoundError') { status('A Bosch não apareceu com o filtro. Toque em "Procurar outra trena" para ver todos os aparelhos.'); return; }
+    if (e.name === 'NotFoundError') { status('A Bosch não apareceu com o filtro. Toque em "Conectar outra trena" para ver todos os aparelhos.'); return; }
     throw e;
   }
   await conectarDispositivo(device);
@@ -806,7 +831,7 @@ $('btnTuyaSalvar').onclick = () => {
   }
   gravarJson('tuya_cred', c);
   log('Chave salva: device_id ' + c.device_id + ', uuid ' + c.uuid);
-  status('Chave da trena salva. Agora toque em Conectar trena.');
+  status('Chave da trena salva. Agora toque em Conectar Mileseey.');
   $('tuyaTexto').value = ''; $('config').style.display = 'none'; mostrarEstadoTuya();
 };
 $('btnTuyaCalib').onclick = () => { gravarJson('tuya_dp', null); gravarJson('tuya_ignorar', []); mostrarEstadoTuya(); status('Calibração apagada. Na próxima medida o app pergunta de novo.'); };
@@ -894,31 +919,50 @@ $('ordemOk').onclick = () => {
   desenharTudo();
   desenharCroquis();
 };
-// Arrastar pela alça ⠿ (dedo ou caneta)
+// Arrastar pela alça ⠿ (dedo ou caneta), com rolagem automática ao chegar perto das bordas.
 (() => {
   const lista = $('ordemLista');
-  let dragEl = null, startY = 0;
+  let dragEl = null, ultimaY = 0, timer = null;
+  // reinsere o item arrastado conforme a posição vertical do ponteiro
+  function reposiciona(clientY) {
+    if (!dragEl) return;
+    const outras = [...lista.querySelectorAll('.ordRow:not(.dragging)')];
+    let antes = null;
+    for (const r of outras) { const b = r.getBoundingClientRect(); if (clientY < b.top + b.height / 2) { antes = r; break; } }
+    if (antes) lista.insertBefore(dragEl, antes); else lista.appendChild(dragEl);
+  }
+  // enquanto arrastando perto do topo/base, rola a lista sozinha ("empurra" a página)
+  function autoScroll() {
+    if (!dragEl) return;
+    const lb = lista.getBoundingClientRect(), margem = 72;
+    let d = 0;
+    if (ultimaY < lb.top + margem) d = -16;
+    else if (ultimaY > lb.bottom - margem) d = 16;
+    if (d) {
+      const antes = lista.scrollTop;
+      lista.scrollTop += d;
+      if (lista.scrollTop !== antes) reposiciona(ultimaY);
+    }
+  }
   lista.addEventListener('pointerdown', e => {
     const alca = e.target.closest('.alca'); if (!alca) return;
     const row = alca.closest('.ordRow'); if (!row) return;
     e.preventDefault();
-    dragEl = row; startY = e.clientY;
+    dragEl = row; ultimaY = e.clientY;
     row.classList.add('dragging');
     try { row.setPointerCapture(e.pointerId); } catch (x) { }
+    if (!timer) timer = setInterval(autoScroll, 16);
   });
   lista.addEventListener('pointermove', e => {
     if (!dragEl) return;
     e.preventDefault();
-    dragEl.style.transform = `translateY(${e.clientY - startY}px)`;
-    const outras = [...lista.querySelectorAll('.ordRow:not(.dragging)')];
-    let antes = null;
-    for (const r of outras) { const b = r.getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { antes = r; break; } }
-    if (antes) lista.insertBefore(dragEl, antes); else lista.appendChild(dragEl);
-    startY = e.clientY; dragEl.style.transform = 'translateY(0px)';
+    ultimaY = e.clientY;
+    reposiciona(e.clientY);
   });
   const fim = () => {
+    if (timer) { clearInterval(timer); timer = null; }
     if (!dragEl) return;
-    dragEl.classList.remove('dragging'); dragEl.style.transform = '';
+    dragEl.classList.remove('dragging');
     ordemIds = [...lista.querySelectorAll('.ordRow')].map(r => +r.dataset.id);
     dragEl = null;
     montarListaOrdem();
@@ -984,17 +1028,50 @@ function abrirDesenho() {
   drawCtx = cv.getContext('2d');
   drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height);
   drawCtx.strokeStyle = '#111'; drawCtx.lineWidth = 3; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+  ['dcLA', 'dcQt', 'dcLoc', 'dcObs'].forEach(id => $(id).value = '');
   $('draw').style.display = 'flex';
 }
 function posCanvas(ev) {
   const cv = $('drawCanvas'), r = cv.getBoundingClientRect();
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
+// Monta a imagem final: um cabeçalho com os campos digitados + o desenho embaixo.
+function desenhoParaImagem() {
+  const base = $('drawCanvas');
+  const campos = [
+    ['Largura x Altura', $('dcLA').value.trim()],
+    ['Quantidade', $('dcQt').value.trim()],
+    ['Localização', $('dcLoc').value.trim()],
+    ['Observações', $('dcObs').value.trim()],
+  ];
+  const temTexto = campos.some(c => c[1]);
+  const headH = temTexto ? 250 : 0;
+  const out = document.createElement('canvas');
+  out.width = base.width; out.height = base.height + headH;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, out.width, out.height);
+  if (temTexto) {
+    ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#111';
+    let y = 54;
+    for (const [rot, val] of campos) {
+      ctx.font = 'bold 30px sans-serif';
+      ctx.fillText(rot + ':', 24, y);
+      const w = ctx.measureText(rot + ':  ').width;
+      ctx.font = '30px sans-serif';
+      ctx.fillText(val || '—', 24 + w, y);
+      y += 52;
+    }
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, headH - 1); ctx.lineTo(out.width, headH - 1); ctx.stroke();
+  }
+  ctx.drawImage(base, 0, headH);
+  return out.toDataURL('image/png');
+}
 $('btnDesenhar').onclick = abrirDesenho;
 $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
 $('drawCancelar').onclick = () => { $('draw').style.display = 'none'; };
 $('drawSalvar').onclick = () => {
-  anexos.push({ tipo: 'desenho', data: $('drawCanvas').toDataURL('image/png') });
+  anexos.push({ tipo: 'desenho', data: desenhoParaImagem() });
   $('draw').style.display = 'none';
   salvarComAviso(); desenharAnexos();
   status(anexos.length + ' anexo(s). Toque em "Gerar PDF" quando terminar.');
