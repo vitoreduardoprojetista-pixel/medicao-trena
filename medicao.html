@@ -1489,11 +1489,20 @@ async function gerarPdf() {
     const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 92;
     pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
     if (slot.unidades.length) {
-      // tapa a linha de "previsto" do molde (uma acima da 1ª linha de medida) + todas as linhas de medida,
-      // sem alcançar o cabeçalho L/H/DATA (que fica ~15pt acima da linha de previsto).
+      // Apaga só o TEXTO do "previsto" do molde (linha logo acima da 1ª linha de medida) e o eco do
+      // tipo nas linhas de medida, com retângulos estreitos POR CÉLULA — sem encostar nas bordas da
+      // tabela (se cobrir as bordas, a grade some e parece "cortado").
       const uys = slot.unidades.map(u => u.y);
-      const yBot = Math.min(...uys) - 6, yTop = Math.max(...uys) + 29, hh = yTop - yBot;
-      [[32, 90], [122, 72], [300, 140], [440, 70]].forEach(([x, w]) => pg.drawRectangle({ x, y: yBot, width: w, height: hh, color: branco }));
+      const budgetY = Math.max(...uys) + 19.8; // altura de linha do modelo FastReport
+      const limpa = (x1, x2, y) => pg.drawRectangle({ x: x1, y: y - 3, width: x2 - x1, height: 11, color: branco });
+      limpa(33, 78, budgetY);                        // TIPO
+      limpa(83, 113, budgetY);                       // QTDE
+      limpa(cols.cmL - 15, cols.cmL + 15, budgetY);  // previsto contramarco L
+      limpa(cols.cmH - 15, cols.cmH + 15, budgetY);  // previsto contramarco H
+      limpa(259, cols.esL - 20, budgetY);            // LOCALIZAÇÃO
+      limpa(cols.esL - 15, cols.esL + 15, budgetY);  // previsto esquadria L
+      limpa(cols.esH - 15, cols.esH + 15, budgetY);  // previsto esquadria H
+      for (const u of uys) limpa(33, 78, u);         // eco do tipo (CXxx) nas linhas de medida
     }
     // rótulo no topo da peça
     pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
