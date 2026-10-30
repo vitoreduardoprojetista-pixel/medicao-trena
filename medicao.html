@@ -1255,8 +1255,13 @@ $('btnGerar').onclick = async () => {
   try {
     status('Gerando PDF...');
     const bytes = await gerarPdf();
-    // Nome = o nome original do caderno, pra você poder regravar por cima (salvando na mesma pasta).
-    const nome = /\.pdf$/i.test(nomeArquivo) ? nomeArquivo : (nomeArquivo || 'caderno') + '.pdf';
+    // Nome = caderno + etapa: "<caderno> - CONTRAMARCO ETAPA 01.pdf" / "... ESQUADRIAS ETAPA 02.pdf".
+    // A etapa numera sozinha a cada PDF gerado, separada por tipo (contramarco x esquadria) e por O.S.
+    const base = (nomeArquivo || 'caderno').replace(/\.pdf$/i, '');
+    const label = escopo === 'cm' ? 'CONTRAMARCO' : escopo === 'es' ? 'ESQUADRIAS' : 'MEDIÇÃO';
+    const ekey = 'etapa_' + (obra.os || nomeArquivo) + '_' + (escopo || 'ambos');
+    const n = (lerJson(ekey) || 0) + 1; gravarJson(ekey, n);
+    const nome = `${base} - ${label} ETAPA ${String(n).padStart(2, '0')}.pdf`;
     const arq = new File([bytes], nome, { type: 'application/pdf' });
     if (navigator.canShare && navigator.canShare({ files: [arq] })) {
       await navigator.share({ files: [arq], title: nome });
@@ -1264,7 +1269,7 @@ $('btnGerar').onclick = async () => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(arq); a.download = nome; a.click();
     }
-    status('PDF gerado: ' + nome + '. Pra regravar por cima, salve na mesma pasta com o mesmo nome.');
+    status('PDF gerado: ' + nome);
   } catch (e) {
     if (e.name !== 'AbortError') { status('Erro ao gerar o PDF: ' + e.message); log(e.stack); }
   }
