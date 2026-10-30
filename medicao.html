@@ -80,27 +80,42 @@
   #drawTopo button { font-size: 14px; padding: 8px 12px; }
   #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
   #drawCanvas { background: #fff; border-radius: 6px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 2px 12px rgba(0,0,0,.4); }
+  /* Botão de configurações no topo */
+  h1 { display: flex; align-items: center; justify-content: space-between; }
+  #btnConfig { background: #eef1f5; color: #1d2330; border: 2px solid #d1d5db; font-size: 18px; padding: 4px 12px; border-radius: 10px; }
+  /* Painel de configurações */
+  #config { position: fixed; inset: 0; background: #f4f5f7; z-index: 55; display: none; flex-direction: column; }
+  #configTopo { background: #1d2330; color: #fff; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; }
+  #configTopo > span { font-size: 16px; font-weight: 600; }
+  #configTopo button { font-size: 14px; padding: 8px 14px; }
+  #configCorpo { flex: 1; overflow: auto; padding: 14px; }
+  /* Tela de ordenar as esquadrias */
+  #ordem { position: fixed; inset: 0; background: #f4f5f7; z-index: 58; display: none; flex-direction: column; }
+  #ordemTopo { background: #1d2330; color: #fff; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #ordemTopo > span { font-size: 16px; font-weight: 600; }
+  #ordemTopo button { font-size: 14px; padding: 10px 14px; }
+  #ordemAjuda { font-size: 13px; color: #6b7280; padding: 10px 14px 4px; }
+  #ordemLista { flex: 1; overflow: auto; padding: 8px 10px 20px; }
+  .ordRow { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 10px; margin: 6px 4px; }
+  .ordRow.dragging { box-shadow: 0 6px 18px rgba(0,0,0,.25); opacity: .95; border-color: #3b82f6; }
+  .ordRow .alca { font-size: 22px; color: #9aa3b2; cursor: grab; padding: 0 6px; touch-action: none; }
+  .ordRow .num { font-size: 13px; font-weight: 700; color: #1f6feb; min-width: 22px; text-align: center; }
+  .ordRow .txt { flex: 1; font-size: 14px; }
+  .ordRow .txt b { font-size: 15px; }
+  .ordRow .updown { display: flex; flex-direction: column; gap: 2px; }
+  .ordRow .updown button { background: #eef4ff; color: #1f4fb0; border: 1px solid #c7d8f5; font-size: 12px; padding: 3px 8px; border-radius: 6px; }
 </style>
 </head>
 <body>
-<h1>Medição de Esquadrias</h1>
+<h1>Medição de Esquadrias <button id="btnConfig" title="Configurações">⚙</button></h1>
 <div id="status">1) Abra o caderno de medição (PDF do CEM). 2) Conecte a trena. 3) Toque num campo e meça.</div>
 <div class="linha">
   <button id="btnAbrir">Abrir caderno (PDF)</button>
   <button id="btnConectar">Conectar trena</button>
 </div>
-<button id="btnBosch" class="sec" style="width:100%;font-size:13px;padding:8px;margin-bottom:8px">📐 Conectar trena Bosch</button>
+<div class="linha"><button id="btnBosch">📐 Conectar Bosch</button></div>
 <button id="btnTrocarTrena" class="sec" style="display:none;width:100%;font-size:13px;padding:8px;margin-bottom:8px">Procurar outra trena</button>
 <input type="file" id="arquivo" accept="application/pdf">
-<details id="painelTuya" class="item" style="margin-bottom:10px">
-  <summary style="font-size:15px;font-weight:600">Chave da trena D5T (Tuya) <span id="tuyaEstado" style="font-weight:400;color:#6b7280"></span></summary>
-  <div style="font-size:13px;color:#6b7280;margin:6px 0">Cole aqui a resposta da Tuya com device_id, local_key e uuid (pode colar o texto inteiro).</div>
-  <textarea id="tuyaTexto" rows="4" placeholder='{"id": "...", "local_key": "...", "uuid": "..."}'></textarea>
-  <div class="linha" style="margin-top:8px">
-    <button id="btnTuyaSalvar" class="ok">Salvar chave</button>
-    <button id="btnTuyaCalib" class="sec">Refazer calibração</button>
-  </div>
-</details>
 <div id="obra"></div>
 <div id="escopoBar">
   <div class="tit">O que você vai medir agora?</div>
@@ -164,6 +179,29 @@
     </div>
   </div>
   <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
+</div>
+
+<!-- Configurações (chave da trena D5T) -->
+<div id="config">
+  <div id="configTopo"><span>⚙ Configurações</span><button id="configFechar" class="sec">Fechar</button></div>
+  <div id="configCorpo">
+    <div class="item" style="margin:0">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px">Chave da trena D5T (Tuya) <span id="tuyaEstado" style="font-weight:400;color:#6b7280"></span></div>
+      <div style="font-size:13px;color:#6b7280;margin:6px 0">Cole aqui a resposta da Tuya com device_id, local_key e uuid (pode colar o texto inteiro). Isso é configurado uma vez só.</div>
+      <textarea id="tuyaTexto" rows="4" placeholder='{"id": "...", "local_key": "...", "uuid": "..."}'></textarea>
+      <div class="linha" style="margin-top:8px">
+        <button id="btnTuyaSalvar" class="ok">Salvar chave</button>
+        <button id="btnTuyaCalib" class="sec">Refazer calibração</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ordenar as esquadrias antes de mostrar o caderno -->
+<div id="ordem">
+  <div id="ordemTopo"><span>Ordem de medição</span><button id="ordemOk" class="ok">Usar esta ordem ▶</button></div>
+  <div id="ordemAjuda">Arraste pela alça ⠿ (ou use ▲▼) para deixar as esquadrias na ordem em que você vai medir. O caderno aparece nesta ordem.</div>
+  <div id="ordemLista"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -244,6 +282,7 @@ let obs = {};             // i -> texto
 let flags = {};           // i -> { fid: true | "valor" }
 let escopo = null;        // 'es' | 'cm' | 'ambos'
 let anexos = [];          // [{ tipo: 'foto'|'desenho', data: dataURL }] -> páginas no fim do PDF
+let ordemIds = [];        // ordem de exibição das esquadrias (lista de it.id), escolhida pelo usuário
 let ativo = null;
 const CAMPOS_TODOS = [['cmL', 'Contramarco L'], ['cmH', 'Contramarco H'], ['esL', 'Esquadria L'], ['esH', 'Esquadria H']];
 function campos() {
@@ -255,17 +294,17 @@ const nomeCampo = c => (CAMPOS_TODOS.find(x => x[0] === c) || [c, c])[1];
 
 function chaveObra() { return 'medicao_' + (obra.os || nomeArquivo); }
 function salvar() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos })); } catch (e) { }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds })); } catch (e) { }
 }
 // Igual a salvar(), mas avisa quando a memória do celular estoura (fotos são pesadas).
 function salvarComAviso() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos })); return true; }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds })); return true; }
   catch (e) { status('Memória do celular cheia: o anexo entra no PDF agora, mas pode sumir se você fechar o app. Gere o PDF antes de fechar.'); return false; }
 }
 function carregarSalvo() {
   try {
     const s = JSON.parse(localStorage.getItem(chaveObra()) || 'null');
-    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; anexos = s.anexos || []; }
+    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; anexos = s.anexos || []; ordemIds = s.ordem || []; }
   } catch (e) { }
 }
 
@@ -366,13 +405,25 @@ async function abrirPdf(file) {
     });
     itens.push(...itensPag);
   }
-  medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ativo = null;
+  medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; ativo = null;
+  itens.forEach((it, idx) => it.id = idx); // id estável na ordem em que o PDF foi lido
   carregarSalvo();
+  aplicarOrdemSalva();
   const nUn = itens.reduce((s, i) => s + i.unidades.length, 0);
-  status(`${itens.length} itens e ${nUn} unidades. Escolha o que vai medir e toque num campo.`);
+  status(`${itens.length} itens e ${nUn} unidades.`);
   log('Itens lidos: ' + itens.map(i => i.tipo).join(', '));
-  desenharTudo();
-  desenharCroquis();
+  if (itens.length > 1) abrirOrdenacao();   // deixa o usuário ordenar antes de mostrar o caderno
+  else { desenharTudo(); desenharCroquis(); }
+}
+
+// Aplica a ordem salva (lista de it.id) ao array itens; acrescenta no fim o que faltar.
+function aplicarOrdemSalva() {
+  if (!ordemIds || !ordemIds.length) { ordemIds = itens.map(it => it.id); return; }
+  const byId = {}; itens.forEach(it => byId[it.id] = it);
+  const novo = ordemIds.map(id => byId[id]).filter(Boolean);
+  itens.forEach(it => { if (!ordemIds.includes(it.id)) novo.push(it); });
+  itens = novo;
+  ordemIds = itens.map(it => it.id);
 }
 
 // Renderiza o croqui (desenho) de cada item e guarda como imagem para mostrar no card.
@@ -404,9 +455,11 @@ async function desenharCroquis() {
 function setCroqui(i) { const el = $('cq-' + i); if (el && croquiCache[i]) { el.src = croquiCache[i]; el.style.display = 'block'; } }
 
 // ---------- Tela principal ----------
-function chave(i, u, c) { return `${i}-${u}-${c}`; }
+// Chave de dados por ESQUADRIA estável (it.id), não pela posição na lista.
+// Assim reordenar a lista nunca troca as medidas/flags de lugar.
+function chave(i, u, c) { return `${itens[i].id}-${u}-${c}`; }
 function menor(lista) { return lista && lista.length ? Math.min(...lista) : null; }
-function nMarcadas(i) { const f = flags[i] || {}; return Object.keys(f).filter(k => f[k]).length; }
+function nMarcadas(i) { const f = flags[itens[i].id] || {}; return Object.keys(f).filter(k => f[k]).length; }
 
 function desenharTudo() {
   const tem = itens.length > 0;
@@ -436,7 +489,7 @@ function desenharTudo() {
     });
     const n = nMarcadas(i);
     html += `<button class="btnOpc${n ? ' tem' : ''}" data-opc="${i}">⚙ Opções / flags${n ? ' (' + n + ' marcadas)' : ''}</button>`;
-    html += `<textarea rows="1" placeholder="Observação (vai no campo OBS)" data-obs="${i}">${obs[i] || ''}</textarea>`;
+    html += `<textarea rows="1" placeholder="Observação (vai no campo OBS)" data-obs="${it.id}">${obs[it.id] || ''}</textarea>`;
     d.innerHTML = html;
     box.appendChild(d);
   });
@@ -540,7 +593,8 @@ function wizRender() {
   $('wizPasso').textContent = `Opções ${escopo === 'cm' ? 'do contramarco' : 'da esquadria'} · passo ${wiz.s + 1} de ${totalPassos}`;
   $('wizQual').textContent = `${it.tipo} — ${it.loc || 'sem local'}`;
   $('wizProg').style.width = Math.round((wiz.s + 1) / totalPassos * 100) + '%';
-  const f = flags[wiz.i] = flags[wiz.i] || {};
+  const idf = itens[wiz.i].id;
+  const f = flags[idf] = flags[idf] || {};
   const corpo = $('wizCorpo');
   let html = `<h2>${sec.t}</h2>`;
   if (sec.tipo === 'valor') {
@@ -753,7 +807,7 @@ $('btnTuyaSalvar').onclick = () => {
   gravarJson('tuya_cred', c);
   log('Chave salva: device_id ' + c.device_id + ', uuid ' + c.uuid);
   status('Chave da trena salva. Agora toque em Conectar trena.');
-  $('tuyaTexto').value = ''; $('painelTuya').open = false; mostrarEstadoTuya();
+  $('tuyaTexto').value = ''; $('config').style.display = 'none'; mostrarEstadoTuya();
 };
 $('btnTuyaCalib').onclick = () => { gravarJson('tuya_dp', null); gravarJson('tuya_ignorar', []); mostrarEstadoTuya(); status('Calibração apagada. Na próxima medida o app pergunta de novo.'); };
 mostrarEstadoTuya();
@@ -780,7 +834,7 @@ function tuyaParaMm(dps) {
 
 async function conectarTuya(server, notif, nome) {
   const cred = lerJson('tuya_cred');
-  if (!cred) { $('painelTuya').open = true; throw new Error('Essa trena usa o chip Tuya. Cole a chave dela em "Chave da trena D5T" e conecte de novo.'); }
+  if (!cred) { $('config').style.display = 'flex'; throw new Error('Essa trena usa o chip Tuya. Cole a chave dela em "Chave da trena D5T" (⚙ Configurações) e conecte de novo.'); }
   const escr = await tentar(server, Tuya.SERV, Tuya.WRITE);
   const t = new Tuya.TuyaTrena(cred, logTuya);
   t.escrever = p => escr.writeValueWithoutResponse ? escr.writeValueWithoutResponse(p) : escr.writeValue(p);
@@ -800,6 +854,78 @@ $('btnCopiarLog').onclick = async () => {
   try { await navigator.clipboard.writeText($('log').textContent); status('Registro copiado. Cole na conversa com o Claude.'); }
   catch (e) { status('Não consegui copiar: ' + e.message); }
 };
+
+// ---------- Configurações (chave da trena D5T) ----------
+$('btnConfig').onclick = () => { $('config').style.display = 'flex'; };
+$('configFechar').onclick = () => { $('config').style.display = 'none'; };
+
+// ---------- Ordenar as esquadrias (antes de mostrar o caderno) ----------
+function abrirOrdenacao() { montarListaOrdem(); $('ordem').style.display = 'flex'; }
+function montarListaOrdem() {
+  const byId = {}; itens.forEach(it => byId[it.id] = it);
+  const lista = $('ordemLista');
+  lista.innerHTML = '';
+  ordemIds.forEach((id, k) => {
+    const it = byId[id]; if (!it) return;
+    const row = document.createElement('div');
+    row.className = 'ordRow'; row.dataset.id = id;
+    row.innerHTML = `<span class="alca">⠿</span><span class="num">${k + 1}</span>` +
+      `<span class="txt"><b>${it.tipo}</b>${it.loc ? ' — ' + it.loc : ''}</span>` +
+      `<div class="updown"><button data-up title="Subir">▲</button><button data-down title="Descer">▼</button></div>`;
+    lista.appendChild(row);
+  });
+  lista.querySelectorAll('.ordRow').forEach(row => {
+    row.querySelector('[data-up]').onclick = () => moverOrdem(+row.dataset.id, -1);
+    row.querySelector('[data-down]').onclick = () => moverOrdem(+row.dataset.id, +1);
+  });
+}
+function moverOrdem(id, d) {
+  const k = ordemIds.indexOf(id), j = k + d;
+  if (k < 0 || j < 0 || j >= ordemIds.length) return;
+  [ordemIds[k], ordemIds[j]] = [ordemIds[j], ordemIds[k]];
+  montarListaOrdem();
+}
+$('ordemOk').onclick = () => {
+  const byId = {}; itens.forEach(it => byId[it.id] = it);
+  itens = ordemIds.map(id => byId[id]).filter(Boolean);
+  salvar();
+  $('ordem').style.display = 'none';
+  croquiCache = {};
+  desenharTudo();
+  desenharCroquis();
+};
+// Arrastar pela alça ⠿ (dedo ou caneta)
+(() => {
+  const lista = $('ordemLista');
+  let dragEl = null, startY = 0;
+  lista.addEventListener('pointerdown', e => {
+    const alca = e.target.closest('.alca'); if (!alca) return;
+    const row = alca.closest('.ordRow'); if (!row) return;
+    e.preventDefault();
+    dragEl = row; startY = e.clientY;
+    row.classList.add('dragging');
+    try { row.setPointerCapture(e.pointerId); } catch (x) { }
+  });
+  lista.addEventListener('pointermove', e => {
+    if (!dragEl) return;
+    e.preventDefault();
+    dragEl.style.transform = `translateY(${e.clientY - startY}px)`;
+    const outras = [...lista.querySelectorAll('.ordRow:not(.dragging)')];
+    let antes = null;
+    for (const r of outras) { const b = r.getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { antes = r; break; } }
+    if (antes) lista.insertBefore(dragEl, antes); else lista.appendChild(dragEl);
+    startY = e.clientY; dragEl.style.transform = 'translateY(0px)';
+  });
+  const fim = () => {
+    if (!dragEl) return;
+    dragEl.classList.remove('dragging'); dragEl.style.transform = '';
+    ordemIds = [...lista.querySelectorAll('.ordRow')].map(r => +r.dataset.id);
+    dragEl = null;
+    montarListaOrdem();
+  };
+  lista.addEventListener('pointerup', fim);
+  lista.addEventListener('pointercancel', fim);
+})();
 
 // ---------- Croquis e anexos (fotos + desenho à mão) ----------
 // Reduz a foto (celular tira em alta) para caber na memória e no PDF.
@@ -926,7 +1052,7 @@ async function gerarPdf() {
       });
     });
     // 2) flags marcadas
-    const f = flags[i] || {};
+    const f = flags[it.id] || {};
     for (const fid of Object.keys(f)) {
       if (!f[fid]) continue;
       const sec = FLAG_SEC[fid]; if (!sec) continue;
@@ -940,8 +1066,8 @@ async function gerarPdf() {
       }
     }
     // 3) OBS
-    if (obs[i] && it.obsPos) {
-      const txt = obs[i].replace(/\s+/g, ' ').slice(0, 140);
+    if (obs[it.id] && it.obsPos) {
+      const txt = obs[it.id].replace(/\s+/g, ' ').slice(0, 140);
       const dir = 577, meio = (it.obsPos.x + dir) / 2, larguraMax = dir - it.obsPos.x;
       let tam = 9;
       while (tam > 5 && negrito.widthOfTextAtSize(txt, tam) > larguraMax) tam -= 0.5;
