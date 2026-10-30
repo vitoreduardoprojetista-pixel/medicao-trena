@@ -62,6 +62,10 @@
   .campoVal { margin-bottom: 12px; }
   .campoVal label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
   .campoVal input { width: 100%; font-size: 18px; padding: 12px; border: 2px solid #d1d5db; border-radius: 10px; }
+  .linhaMedir { display: flex; gap: 8px; align-items: stretch; }
+  .linhaMedir input { flex: 1; }
+  .linhaMedir .medir { flex: 0 0 auto; font-size: 14px; padding: 0 14px; background: #eef4ff; color: #1f4fb0; border: 2px solid #c7d8f5; }
+  .linhaMedir .medir.armado { background: #16a34a; color: #fff; border-color: #16a34a; }
   #wizRodape { padding: 10px 14px; background: #fff; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; }
   #wizRodape button { flex: 1; }
   #wizRodape .meio { flex: 0.7; }
@@ -73,6 +77,7 @@
   .anexoThumb { position: relative; display: inline-block; margin: 4px; vertical-align: top; }
   .anexoThumb img { height: 92px; border: 1px solid #d1d5db; border-radius: 8px; display: block; background: #fff; }
   .anexoThumb .rem { position: absolute; top: -7px; right: -7px; background: #dc2626; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 15px; padding: 0; line-height: 24px; }
+  .anexoThumb .edt { position: absolute; top: -7px; left: -7px; background: #1f6feb; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 13px; padding: 0; line-height: 24px; }
   .anexoThumb .tag { position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 6px; }
   /* Tela de desenho à mão */
   #draw { position: fixed; inset: 0; background: #374151; z-index: 60; display: none; flex-direction: column; }
@@ -138,6 +143,7 @@
   </div>
   <div style="font-size:12px;color:#6b7280">Aparecem só os campos de medida da sua escolha. Pode trocar depois; as medidas de cada tipo ficam guardadas.</div>
 </div>
+<button id="btnReordenar" class="sec" style="display:none;width:100%;font-size:13px;padding:8px;margin-bottom:8px">↕ Mudar ordem das esquadrias</button>
 <div id="itens"></div>
 <div id="anexosBar">
   <div class="tit">Croquis e anexos (vão no fim do PDF)</div>
@@ -152,7 +158,6 @@
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
   <button id="btnOpcoes" class="sec">Opções</button>
 </div>
-<button id="btnCopiarLog" class="sec" style="width:100%;margin-top:12px">Copiar registro</button>
 <div id="log"></div>
 
 <div id="barra">
@@ -191,10 +196,12 @@
     </div>
   </div>
   <div id="drawCampos">
-    <label>Largura x Altura<input id="dcLA" placeholder="ex.: 1200 x 1500"></label>
+    <label>Largura<input id="dcL" inputmode="numeric" placeholder="ex.: 1200"></label>
+    <label>Altura<input id="dcA" inputmode="numeric" placeholder="ex.: 1500"></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
     <label>Localização<input id="dcLoc" placeholder="ex.: Sala"></label>
-    <label class="full">Observações<input id="dcObs" placeholder="anotação"></label>
+    <label>Peitoril<input id="dcPeit" inputmode="numeric" placeholder="ex.: 1000"></label>
+    <label>Observações<input id="dcObs" placeholder="anotação"></label>
   </div>
   <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
 </div>
@@ -211,6 +218,11 @@
         <button id="btnTuyaSalvar" class="ok">Salvar chave</button>
         <button id="btnTuyaCalib" class="sec">Refazer calibração</button>
       </div>
+    </div>
+    <div class="item" style="margin:10px 0 0">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px">Registro técnico</div>
+      <div style="font-size:13px;color:#6b7280;margin:6px 0">Use só se o Claude pedir, para depurar a conexão da trena.</div>
+      <button id="btnCopiarLog" class="sec" style="width:100%">Copiar registro</button>
     </div>
   </div>
 </div>
@@ -494,6 +506,7 @@ function desenharTudo() {
   $('obra').innerHTML = `<b>O.S. ${obra.os || ''}</b> · ${obra.cliente || ''}<br>${obra.obra || ''}<br><span style="color:#6b7280">${obra.end || ''}</span>`;
   $('escopoBar').style.display = tem ? 'block' : 'none';
   $('acoesFim2').style.display = tem ? 'flex' : 'none';
+  $('btnReordenar').style.display = (tem && itens.length > 1) ? 'block' : 'none';
   desenharAnexos();
   $('escopoBar').querySelectorAll('button').forEach(b => {
     b.className = (escopo === b.dataset.escopo) ? '' : 'cl';
@@ -541,6 +554,7 @@ function desenharCampo(i, u, c) {
 }
 
 function ativar(i, u, c) {
+  alvoAlv = null; // selecionar um campo normal desarma a alvenaria
   const ant = ativo;
   ativo = { i, u, c };
   if (ant) desenharCampo(ant.i, ant.u, ant.c);
@@ -562,6 +576,17 @@ function desenharBarra() {
 }
 
 function adicionarMedida(mm) {
+  // Campo de alvenaria armado: guarda só a última medida (sobrescreve) e volta pro visor.
+  if (alvoAlv) {
+    const f = flags[alvoAlv.id] = flags[alvoAlv.id] || {};
+    f[alvoAlv.fid] = String(mm);
+    salvar();
+    const inp = document.querySelector('[data-val="' + alvoAlv.fid + '"]');
+    if (inp) inp.value = mm;
+    status('Alvenaria: ' + mm + ' mm registrado.');
+    if (navigator.vibrate) navigator.vibrate(80);
+    return;
+  }
   if (!ativo) { status('Medida recebida (' + mm + ' mm), mas nenhum campo está selecionado. Toque num campo.'); return; }
   const k = chave(ativo.i, ativo.u, ativo.c);
   (medidas[k] = medidas[k] || []).push(mm);
@@ -595,6 +620,7 @@ $('btnDigitar').onclick = () => {
 };
 $('btnAbrir').onclick = () => $('arquivo').click();
 $('arquivo').onchange = e => { if (e.target.files[0]) abrirPdf(e.target.files[0]).catch(err => { status('Erro ao ler o PDF: ' + err.message); log(err.stack); }); };
+$('btnReordenar').onclick = () => { ordemIds = itens.map(it => it.id); abrirOrdenacao(); };
 $('btnOpcoes').onclick = () => { $('opcoes').style.display = 'flex'; };
 $('opcoesFechar').onclick = () => { $('opcoes').style.display = 'none'; };
 $('btnZerar').onclick = () => {
@@ -607,15 +633,17 @@ $('escopoBar').querySelectorAll('button').forEach(b => b.onclick = () => {
 
 // ---------- Assistente de opções (tela a tela) ----------
 let wiz = null; // { i, s }
+let alvoAlv = null; // campo de alvenaria "armado" p/ receber a próxima medida da trena: { id, fid }
 function abrirWizard(i) { wiz = { i, s: 0 }; $('wiz').style.display = 'flex'; wizRender(); }
 function fecharWizard() {
   const i = wiz ? wiz.i : null;
-  wiz = null; $('wiz').style.display = 'none'; desenharTudo();
+  wiz = null; alvoAlv = null; $('wiz').style.display = 'none'; desenharTudo();
   if (i != null) { const el = document.querySelector(`[data-opc="${i}"]`); if (el) el.scrollIntoView({ block: 'center' }); }
 }
 
 function wizRender() {
   if (!wiz) return;
+  alvoAlv = null; // trocar de passo desarma o campo de alvenaria
   const secs = secoesDoEscopo();
   const it = itens[wiz.i], sec = secs[wiz.s];
   const totalPassos = secs.length;
@@ -627,9 +655,9 @@ function wizRender() {
   const corpo = $('wizCorpo');
   let html = `<h2>${sec.t}</h2>`;
   if (sec.tipo === 'valor') {
-    html += `<p class="ajuda">Digite os valores (em mm). Deixe em branco o que não tiver.</p>`;
+    html += `<p class="ajuda">Digite o valor (mm) ou toque em 📏 Medir e use a trena. Guarda só a última medida de cada campo.</p>`;
     for (const [fid, rot] of sec.ops) {
-      html += `<div class="campoVal"><label>${rot}</label><input inputmode="numeric" data-val="${fid}" value="${f[fid] || ''}" placeholder="—"></div>`;
+      html += `<div class="campoVal"><label>${rot}</label><div class="linhaMedir"><input inputmode="numeric" data-val="${fid}" value="${f[fid] || ''}" placeholder="—"><button class="medir" data-medir="${fid}">📏 Medir</button></div></div>`;
     }
   } else {
     html += `<p class="ajuda">Toque para marcar o que se aplica a este item.</p><div class="ops">`;
@@ -647,6 +675,12 @@ function wizRender() {
     const fid = el.dataset.val, v = el.value.trim();
     if (v) f[fid] = v; else delete f[fid];
     salvar();
+  });
+  corpo.querySelectorAll('[data-medir]').forEach(el => el.onclick = () => {
+    alvoAlv = { id: idf, fid: el.dataset.medir };
+    corpo.querySelectorAll('[data-medir]').forEach(b => b.classList.toggle('armado', b === el));
+    const rot = (sec.ops.find(o => o[0] === el.dataset.medir) || [, el.dataset.medir])[1];
+    status('Meça com a trena — vai para "' + rot + '".');
   });
   const ultimoPasso = wiz.s === totalPassos - 1;
   $('wizProximo').textContent = ultimoPasso ? 'Concluir ✓' : 'Próximo ▶';
@@ -1001,10 +1035,12 @@ function desenharAnexos() {
   anexos.forEach((a, k) => {
     const d = document.createElement('div');
     d.className = 'anexoThumb';
-    d.innerHTML = `<img src="${a.data}" alt="anexo"><span class="tag">${a.tipo === 'foto' ? 'Foto' : 'Desenho'}</span><button class="rem" data-rem="${k}" title="Remover">×</button>`;
+    const edt = a.tipo === 'desenho' ? `<button class="edt" data-edt="${k}" title="Editar">✎</button>` : '';
+    d.innerHTML = `<img src="${a.data}" alt="anexo"><span class="tag">${a.tipo === 'foto' ? 'Foto' : 'Desenho'}</span>${edt}<button class="rem" data-rem="${k}" title="Remover">×</button>`;
     g.appendChild(d);
   });
   g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => { anexos.splice(+el.dataset.rem, 1); salvar(); desenharAnexos(); });
+  g.querySelectorAll('[data-edt]').forEach(el => el.onclick = () => abrirDesenhoEdicao(+el.dataset.edt));
 }
 
 $('btnFoto').onclick = () => $('fotoInput').click();
@@ -1020,46 +1056,56 @@ $('fotoInput').onchange = async e => {
   status(anexos.length + ' anexo(s). Toque em "Gerar PDF" quando terminar.');
 };
 
-// Desenho à mão (dedo ou caneta no tablet)
-let drawCtx = null, desenhando = false;
-function abrirDesenho() {
+// Desenho à mão (dedo ou caneta no tablet). Editável: guarda o traço cru (base) + os campos.
+let drawCtx = null, desenhando = false, editIndex = null;
+const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs'];
+function prepararCanvas() {
   const cv = $('drawCanvas');
   cv.width = 1000; cv.height = 1414; // proporção de folha A4 em retrato
   drawCtx = cv.getContext('2d');
   drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height);
   drawCtx.strokeStyle = '#111'; drawCtx.lineWidth = 3; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
-  ['dcLA', 'dcQt', 'dcLoc', 'dcObs'].forEach(id => $(id).value = '');
+}
+function abrirDesenho() {
+  editIndex = null;
+  prepararCanvas();
+  DC_IDS.forEach(id => $(id).value = '');
   $('draw').style.display = 'flex';
+}
+function abrirDesenhoEdicao(k) {
+  const a = anexos[k]; if (!a || a.tipo !== 'desenho') return;
+  editIndex = k;
+  prepararCanvas();
+  const c = a.campos || {};
+  $('dcL').value = c.L || ''; $('dcA').value = c.A || ''; $('dcQt').value = c.qt || '';
+  $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
+  $('draw').style.display = 'flex';
+  if (a.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = a.base; }
 }
 function posCanvas(ev) {
   const cv = $('drawCanvas'), r = cv.getBoundingClientRect();
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
-// Monta a imagem final: um cabeçalho com os campos digitados + o desenho embaixo.
-function desenhoParaImagem() {
-  const base = $('drawCanvas');
-  const campos = [
-    ['Largura x Altura', $('dcLA').value.trim()],
-    ['Quantidade', $('dcQt').value.trim()],
-    ['Localização', $('dcLoc').value.trim()],
-    ['Observações', $('dcObs').value.trim()],
-  ];
-  const temTexto = campos.some(c => c[1]);
-  const headH = temTexto ? 250 : 0;
+function lerCamposDesenho() {
+  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim() };
+}
+// Monta a imagem final: cabeçalho com os campos digitados + o desenho (base) embaixo.
+function comporDesenho(base, campos) {
+  const linhas = [['Largura', campos.L], ['Altura', campos.A], ['Quantidade', campos.qt], ['Localização', campos.loc], ['Peitoril', campos.peit], ['Observações', campos.obs]];
+  const temTexto = linhas.some(c => c[1]);
+  const headH = temTexto ? 340 : 0;
   const out = document.createElement('canvas');
   out.width = base.width; out.height = base.height + headH;
   const ctx = out.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, out.width, out.height);
   if (temTexto) {
     ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#111';
-    let y = 54;
-    for (const [rot, val] of campos) {
-      ctx.font = 'bold 30px sans-serif';
-      ctx.fillText(rot + ':', 24, y);
+    let y = 50;
+    for (const [rot, val] of linhas) {
+      ctx.font = 'bold 28px sans-serif'; ctx.fillText(rot + ':', 24, y);
       const w = ctx.measureText(rot + ':  ').width;
-      ctx.font = '30px sans-serif';
-      ctx.fillText(val || '—', 24 + w, y);
-      y += 52;
+      ctx.font = '28px sans-serif'; ctx.fillText(val || '—', 24 + w, y);
+      y += 50;
     }
     ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, headH - 1); ctx.lineTo(out.width, headH - 1); ctx.stroke();
@@ -1069,9 +1115,13 @@ function desenhoParaImagem() {
 }
 $('btnDesenhar').onclick = abrirDesenho;
 $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
-$('drawCancelar').onclick = () => { $('draw').style.display = 'none'; };
+$('drawCancelar').onclick = () => { editIndex = null; $('draw').style.display = 'none'; };
 $('drawSalvar').onclick = () => {
-  anexos.push({ tipo: 'desenho', data: desenhoParaImagem() });
+  const campos = lerCamposDesenho();
+  const base = $('drawCanvas').toDataURL('image/png');
+  const anexo = { tipo: 'desenho', data: comporDesenho($('drawCanvas'), campos), base, campos };
+  if (editIndex != null && anexos[editIndex]) anexos[editIndex] = anexo; else anexos.push(anexo);
+  editIndex = null;
   $('draw').style.display = 'none';
   salvarComAviso(); desenharAnexos();
   status(anexos.length + ' anexo(s). Toque em "Gerar PDF" quando terminar.');
