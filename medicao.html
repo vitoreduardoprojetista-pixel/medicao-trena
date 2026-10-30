@@ -63,6 +63,23 @@
   #wizRodape { padding: 10px 14px; background: #fff; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; }
   #wizRodape button { flex: 1; }
   #wizRodape .meio { flex: 0.7; }
+  /* Croquis e anexos */
+  #anexosBar { background: #fff; border-radius: 10px; padding: 10px; margin-bottom: 10px; display: none; }
+  #anexosBar .tit { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  #anexosGaleria { margin-top: 2px; }
+  #anexosGaleria:empty::before { content: "Nenhum croqui ou foto ainda."; font-size: 12px; color: #9aa3b2; }
+  .anexoThumb { position: relative; display: inline-block; margin: 4px; vertical-align: top; }
+  .anexoThumb img { height: 92px; border: 1px solid #d1d5db; border-radius: 8px; display: block; background: #fff; }
+  .anexoThumb .rem { position: absolute; top: -7px; right: -7px; background: #dc2626; color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 15px; padding: 0; line-height: 24px; }
+  .anexoThumb .tag { position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 6px; }
+  /* Tela de desenho à mão */
+  #draw { position: fixed; inset: 0; background: #374151; z-index: 60; display: none; flex-direction: column; }
+  #drawTopo { background: #1d2330; color: #fff; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #drawTopo > span { font-size: 15px; font-weight: 600; }
+  #drawTopo > div { display: flex; gap: 6px; }
+  #drawTopo button { font-size: 14px; padding: 8px 12px; }
+  #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
+  #drawCanvas { background: #fff; border-radius: 6px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 2px 12px rgba(0,0,0,.4); }
 </style>
 </head>
 <body>
@@ -72,6 +89,7 @@
   <button id="btnAbrir">Abrir caderno (PDF)</button>
   <button id="btnConectar">Conectar trena</button>
 </div>
+<button id="btnBosch" class="sec" style="width:100%;font-size:13px;padding:8px;margin-bottom:8px">📐 Conectar trena Bosch</button>
 <button id="btnTrocarTrena" class="sec" style="display:none;width:100%;font-size:13px;padding:8px;margin-bottom:8px">Procurar outra trena</button>
 <input type="file" id="arquivo" accept="application/pdf">
 <details id="painelTuya" class="item" style="margin-bottom:10px">
@@ -94,6 +112,15 @@
   <div style="font-size:12px;color:#6b7280">Aparecem só os campos de medida da sua escolha. Pode trocar depois; as medidas de cada tipo ficam guardadas.</div>
 </div>
 <div id="itens"></div>
+<div id="anexosBar">
+  <div class="tit">Croquis e anexos (vão no fim do PDF)</div>
+  <div class="linha">
+    <button id="btnFoto" class="cl">📷 Escanear / foto</button>
+    <button id="btnDesenhar" class="cl">✏️ Desenhar à mão</button>
+  </div>
+  <div id="anexosGaleria"></div>
+</div>
+<input type="file" id="fotoInput" accept="image/*" capture="environment" multiple>
 <div class="linha" id="acoesFim2" style="display:none">
   <button id="btnGerar" class="ok">Gerar PDF preenchido</button>
   <button id="btnZerar" class="sec">Apagar tudo desta obra</button>
@@ -124,6 +151,19 @@
     <button id="wizVoltar" class="sec">◀ Voltar</button>
     <button id="wizProximo">Próximo ▶</button>
   </div>
+</div>
+
+<!-- Tela de desenho à mão (dedo ou caneta) -->
+<div id="draw">
+  <div id="drawTopo">
+    <span>Desenho à mão</span>
+    <div>
+      <button id="drawLimpar" class="cl">Limpar</button>
+      <button id="drawCancelar" class="sec">Cancelar</button>
+      <button id="drawSalvar" class="ok">Salvar</button>
+    </div>
+  </div>
+  <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -203,6 +243,7 @@ let medidas = {};         // "i-u-campo" -> [mm,...]
 let obs = {};             // i -> texto
 let flags = {};           // i -> { fid: true | "valor" }
 let escopo = null;        // 'es' | 'cm' | 'ambos'
+let anexos = [];          // [{ tipo: 'foto'|'desenho', data: dataURL }] -> páginas no fim do PDF
 let ativo = null;
 const CAMPOS_TODOS = [['cmL', 'Contramarco L'], ['cmH', 'Contramarco H'], ['esL', 'Esquadria L'], ['esH', 'Esquadria H']];
 function campos() {
@@ -214,12 +255,17 @@ const nomeCampo = c => (CAMPOS_TODOS.find(x => x[0] === c) || [c, c])[1];
 
 function chaveObra() { return 'medicao_' + (obra.os || nomeArquivo); }
 function salvar() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo })); } catch (e) { }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos })); } catch (e) { }
+}
+// Igual a salvar(), mas avisa quando a memória do celular estoura (fotos são pesadas).
+function salvarComAviso() {
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos })); return true; }
+  catch (e) { status('Memória do celular cheia: o anexo entra no PDF agora, mas pode sumir se você fechar o app. Gere o PDF antes de fechar.'); return false; }
 }
 function carregarSalvo() {
   try {
     const s = JSON.parse(localStorage.getItem(chaveObra()) || 'null');
-    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; }
+    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; anexos = s.anexos || []; }
   } catch (e) { }
 }
 
@@ -320,7 +366,7 @@ async function abrirPdf(file) {
     });
     itens.push(...itensPag);
   }
-  medidas = {}; obs = {}; flags = {}; escopo = null; ativo = null;
+  medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ativo = null;
   carregarSalvo();
   const nUn = itens.reduce((s, i) => s + i.unidades.length, 0);
   status(`${itens.length} itens e ${nUn} unidades. Escolha o que vai medir e toque num campo.`);
@@ -368,6 +414,7 @@ function desenharTudo() {
   $('obra').innerHTML = `<b>O.S. ${obra.os || ''}</b> · ${obra.cliente || ''}<br>${obra.obra || ''}<br><span style="color:#6b7280">${obra.end || ''}</span>`;
   $('escopoBar').style.display = tem ? 'block' : 'none';
   $('acoesFim2').style.display = tem ? 'flex' : 'none';
+  desenharAnexos();
   $('escopoBar').querySelectorAll('button').forEach(b => {
     b.className = (escopo === b.dataset.escopo) ? '' : 'cl';
   });
@@ -552,6 +599,7 @@ function textoParaMm(txt) {
 }
 function boschParaMm(dv) {
   if (dv.byteLength < 11 || dv.getUint8(0) !== 0xc0 || dv.getUint8(1) !== 0x55 || dv.getUint8(2) !== 0x10) return null;
+  if (dv.getUint16(3, true) !== 0x0006) return null; // só distância (0x0021 = inclinação, outros tipos ignorados)
   const metros = dv.getFloat32(7, true);
   return metros > 0 && metros < 100 ? Math.round(metros * 1000) : null;
 }
@@ -641,6 +689,23 @@ async function pedirMileseey() {
   await conectarDispositivo(device);
 }
 
+// Pede direto a Bosch GLM (serviço 0xfde8, ou nomes comuns AD/GLM/Bosch): abre a lista filtrada.
+async function pedirBosch() {
+  if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
+  status('Procurando a Bosch... escolha ela na lista.');
+  let device;
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [BOSCH_SERV] }, { namePrefix: 'AD' }, { namePrefix: 'GLM' }, { namePrefix: 'Bosch' }, { namePrefix: 'BLE' }],
+      optionalServices: CANDIDATOS
+    });
+  } catch (e) {
+    if (e.name === 'NotFoundError') { status('A Bosch não apareceu com o filtro. Toque em "Procurar outra trena" para ver todos os aparelhos.'); return; }
+    throw e;
+  }
+  await conectarDispositivo(device);
+}
+
 // Procurar qualquer trena (ex.: Bosch, ou se mudar de aparelho).
 async function escolherTrena() {
   if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
@@ -668,6 +733,7 @@ async function conectarTrena() {
   }
 }
 $('btnConectar').onclick = conectarTrena;
+$('btnBosch').onclick = () => pedirBosch().catch(e => { status('Erro ao conectar: ' + e.message); log('Erro: ' + e.name + ' - ' + e.message); });
 $('btnTrocarTrena').onclick = () => escolherTrena().catch(e => { if (e.name !== 'NotFoundError') status('Erro: ' + e.message); });
 atualizarBotaoTrena();
 
@@ -735,6 +801,93 @@ $('btnCopiarLog').onclick = async () => {
   catch (e) { status('Não consegui copiar: ' + e.message); }
 };
 
+// ---------- Croquis e anexos (fotos + desenho à mão) ----------
+// Reduz a foto (celular tira em alta) para caber na memória e no PDF.
+function lerArquivoImagem(file, maxLado = 1600, q = 0.75) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const esc = Math.min(1, maxLado / Math.max(w, h));
+        w = Math.round(w * esc); h = Math.round(h * esc);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        res(cv.toDataURL('image/jpeg', q));
+      };
+      img.onerror = rej; img.src = fr.result;
+    };
+    fr.onerror = rej; fr.readAsDataURL(file);
+  });
+}
+
+function desenharAnexos() {
+  const bar = $('anexosBar');
+  if (!bar) return;
+  bar.style.display = itens.length ? 'block' : 'none';
+  const g = $('anexosGaleria');
+  g.innerHTML = '';
+  anexos.forEach((a, k) => {
+    const d = document.createElement('div');
+    d.className = 'anexoThumb';
+    d.innerHTML = `<img src="${a.data}" alt="anexo"><span class="tag">${a.tipo === 'foto' ? 'Foto' : 'Desenho'}</span><button class="rem" data-rem="${k}" title="Remover">×</button>`;
+    g.appendChild(d);
+  });
+  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => { anexos.splice(+el.dataset.rem, 1); salvar(); desenharAnexos(); });
+}
+
+$('btnFoto').onclick = () => $('fotoInput').click();
+$('fotoInput').onchange = async e => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  status('Processando ' + files.length + ' foto(s)...');
+  for (const f of files) {
+    try { anexos.push({ tipo: 'foto', data: await lerArquivoImagem(f) }); } catch (err) { log('Foto: ' + err.message); }
+  }
+  salvarComAviso(); desenharAnexos();
+  status(anexos.length + ' anexo(s). Toque em "Gerar PDF" quando terminar.');
+};
+
+// Desenho à mão (dedo ou caneta no tablet)
+let drawCtx = null, desenhando = false;
+function abrirDesenho() {
+  const cv = $('drawCanvas');
+  cv.width = 1000; cv.height = 1414; // proporção de folha A4 em retrato
+  drawCtx = cv.getContext('2d');
+  drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height);
+  drawCtx.strokeStyle = '#111'; drawCtx.lineWidth = 3; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+  $('draw').style.display = 'flex';
+}
+function posCanvas(ev) {
+  const cv = $('drawCanvas'), r = cv.getBoundingClientRect();
+  return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
+}
+$('btnDesenhar').onclick = abrirDesenho;
+$('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
+$('drawCancelar').onclick = () => { $('draw').style.display = 'none'; };
+$('drawSalvar').onclick = () => {
+  anexos.push({ tipo: 'desenho', data: $('drawCanvas').toDataURL('image/png') });
+  $('draw').style.display = 'none';
+  salvarComAviso(); desenharAnexos();
+  status(anexos.length + ' anexo(s). Toque em "Gerar PDF" quando terminar.');
+};
+(() => {
+  const cv = $('drawCanvas');
+  cv.addEventListener('pointerdown', ev => { ev.preventDefault(); desenhando = true; const p = posCanvas(ev); drawCtx.beginPath(); drawCtx.moveTo(p.x, p.y); });
+  cv.addEventListener('pointermove', ev => { if (!desenhando) return; ev.preventDefault(); const p = posCanvas(ev); drawCtx.lineTo(p.x, p.y); drawCtx.stroke(); });
+  window.addEventListener('pointerup', () => { desenhando = false; });
+  window.addEventListener('pointercancel', () => { desenhando = false; });
+})();
+
+function dataUrlParaBytes(u) {
+  const bin = atob(u.split(',')[1]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
 // ---------- PDF preenchido ----------
 async function gerarPdf() {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
@@ -795,6 +948,24 @@ async function gerarPdf() {
       centro(pg, txt, negrito, tam, meio, it.obsPos.y, azul);
     }
   });
+
+  // 4) croquis e fotos como páginas no fim do caderno
+  if (anexos.length) {
+    const base = paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 };
+    const margem = 28, titH = 22;
+    for (let k = 0; k < anexos.length; k++) {
+      const a = anexos[k];
+      let img;
+      try { img = a.tipo === 'foto' ? await doc.embedJpg(dataUrlParaBytes(a.data)) : await doc.embedPng(dataUrlParaBytes(a.data)); }
+      catch (e) { try { img = await doc.embedPng(dataUrlParaBytes(a.data)); } catch (e2) { log('Anexo ' + (k + 1) + ': ' + e2.message); continue; } }
+      const pg = doc.addPage([base.width, base.height]);
+      const maxW = base.width - margem * 2, maxH = base.height - margem * 2 - titH;
+      const esc = Math.min(maxW / img.width, maxH / img.height);
+      const w = img.width * esc, h = img.height * esc;
+      pg.drawText((a.tipo === 'foto' ? 'Croqui / foto ' : 'Desenho ') + (k + 1), { x: margem, y: base.height - margem - 12, size: 12, font: negrito, color: cinza });
+      pg.drawImage(img, { x: (base.width - w) / 2, y: base.height - margem - titH - h, width: w, height: h });
+    }
+  }
   return await doc.save();
 }
 
