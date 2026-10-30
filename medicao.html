@@ -633,6 +633,15 @@ async function conectarDispositivo(device) {
   else throw new Error('Não achei o canal de dados da trena. Toque em "Copiar registro" e me mande.');
 }
 
+// Pede direto a Mileseey (nome "TY"): o navegador abre a lista só com ela.
+async function pedirMileseey() {
+  if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
+  status('Conectando na Mileseey...');
+  const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'TY' }], optionalServices: CANDIDATOS });
+  await conectarDispositivo(device);
+}
+
+// Procurar qualquer trena (ex.: Bosch, ou se mudar de aparelho).
 async function escolherTrena() {
   if (!navigator.bluetooth) { status('Este navegador não tem Bluetooth web. Use o Chrome no Android.'); return; }
   status('Procurando a trena... escolha ela na lista.');
@@ -643,12 +652,15 @@ async function escolherTrena() {
 async function conectarTrena() {
   try {
     const salvo = lerJson('trena_device');
+    // Se o navegador guardou a permissão (flags do Chrome ligadas), reconecta sem lista e sem aviso.
     if (salvo && navigator.bluetooth && navigator.bluetooth.getDevices) {
       const devs = await navigator.bluetooth.getDevices().catch(() => []);
       const d = devs.find(x => x.id === salvo.id);
       if (d) { status('Reconectando ' + (salvo.label || 'a trena') + '...'); await conectarDispositivo(d); return; }
     }
-    await escolherTrena(); // 1ª vez, ou o navegador não guardou: escolhe na lista
+    // 1ª vez (ou sem as flags): pede direto a Mileseey, a não ser que a trena salva seja outra.
+    if (salvo && salvo.label && salvo.label !== 'Mileseey') { await escolherTrena(); return; }
+    await pedirMileseey();
   } catch (e) {
     if (e.name === 'NotFoundError') { status('Nenhuma trena escolhida.'); return; }
     status('Erro ao conectar: ' + e.message);
