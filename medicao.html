@@ -336,8 +336,10 @@ SECOES.forEach(s => s.ops.forEach(([fid]) => FLAG_SEC[fid] = s));
 // Seções que aparecem no assistente conforme a escolha: contramarco mostra só a flag de
 // tipo de contramarco; esquadrias mostram as outras; "os dois" mostra todas.
 function secoesDoEscopo() {
-  if (escopo !== 'es' && escopo !== 'cm') return SECOES;
-  return SECOES.filter(s => s.esc === escopo);
+  const lista = (escopo !== 'es' && escopo !== 'cm') ? SECOES : SECOES.filter(s => s.esc === escopo);
+  // Alvenaria primeiro: tem medição pela trena, então começar por ela otimiza o tempo.
+  const alv = lista.filter(s => s.h === 'INFORMAÇÕES DE ALVENARIA');
+  return alv.length ? [...alv, ...lista.filter(s => s.h !== 'INFORMAÇÕES DE ALVENARIA')] : lista;
 }
 
 // ---------- Estado ----------
