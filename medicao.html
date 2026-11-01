@@ -333,7 +333,8 @@ function status(t) { $('status').textContent = t; }
 // Para começar a exigir chave dos clientes, troque para true e publique.
 // Aqui fica SÓ a chave PÚBLICA: ela CONFERE a chave mas NÃO consegue criar nenhuma.
 // As chaves são criadas no gerador (gerador.html), que usa a sua chave PRIVADA (só sua).
-const LIC_EXIGIR = false;
+const LIC_EXIGIR = false;   // false = fase de testes (app abre normal). Troque p/ true para exigir chave.
+const LIC_GRACA = 10;       // aberturas de tolerância se o relógio parecer atrasado (anti-retrocesso de data)
 const LIC_PUB = { "kty": "EC", "crv": "P-256", "x": "HorpVMf5LxF3PW_3Yrw7CKnc6wJmy_FAWuVKvTjTXo0", "y": "bYmTIM_J4MIg3MaVVSF81eE9pH8zi6t6r0kL2dwoGQc", "ext": true };
 const licB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 let _licPub = null;
@@ -347,28 +348,48 @@ async function licValidar(chave) {
     return JSON.parse(new TextDecoder().decode(licB64u(pb))); // { n: nome, exp: 'AAAA-MM-DD', id }
   } catch (e) { return null; }
 }
+function licHoje() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function licDiasRestantes(exp) {
   const h = new Date(); h.setHours(0, 0, 0, 0);
   return Math.round((new Date(exp + 'T00:00:00') - h) / 86400000);
 }
-function lerLic() { try { return localStorage.getItem('licenca_chave') || ''; } catch (e) { return ''; } }
+function licFmt(iso) { const p = String(iso).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso; }
+function licGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function licSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
+function lerLic() { return licGet('licenca_chave') || ''; }
+function licTravar(msg) { const m = $('travaMsg'); if (m) { m.className = msg ? 'erro' : ''; m.textContent = msg || ''; } $('trava').style.display = 'flex'; }
+function licDestravar() { $('trava').style.display = 'none'; }
+// Confere a licença. Além do vencimento, guarda a data mais avançada já vista (hwm):
+// se o relógio "voltar no tempo" (hoje < hwm), libera só LIC_GRACA aberturas e depois trava,
+// evitando que a pessoa atrase a data do celular para continuar usando após o vencimento.
 async function licChecar() {
   if (!LIC_EXIGIR) return true;
-  const salva = lerLic();
-  if (salva) { const p = await licValidar(salva); if (p && licDiasRestantes(p.exp) >= 0) return true; }
-  $('trava').style.display = 'flex';
-  return false;
+  const p = await licValidar(lerLic());
+  if (!p) { licTravar(''); return false; }
+  const hoje = licHoje();
+  let hwm = licGet('licenca_hwm') || '';
+  if (!hwm || hoje > hwm) { hwm = hoje; licSet('licenca_hwm', hwm); }
+  if (hoje >= hwm) licSet('licenca_graca', String(LIC_GRACA)); // relógio no ponto mais alto já visto → repõe tolerância
+  if (hoje > p.exp) { licTravar('Sua liberação venceu em ' + licFmt(p.exp) + '. Peça uma chave nova ao fornecedor.'); return false; }
+  if (hoje < hwm) { // relógio atrasado em relação ao já visto
+    let g = parseInt(licGet('licenca_graca'), 10); if (!(g >= 0)) g = LIC_GRACA;
+    if (g <= 0) { licTravar('A data do celular está atrasada. Ative "data e hora automática" no aparelho para continuar.'); return false; }
+    licSet('licenca_graca', String(g - 1));
+  }
+  licDestravar();
+  return true;
 }
 if ($('travaOk')) $('travaOk').onclick = async () => {
   const chave = $('travaChave').value.trim();
-  const msg = $('travaMsg');
+  const msg = $('travaMsg'); msg.className = '';
   const p = await licValidar(chave);
   if (!p) { msg.className = 'erro'; msg.textContent = 'Chave inválida. Confira se copiou a chave inteira.'; return; }
   const dias = licDiasRestantes(p.exp);
-  if (dias < 0) { msg.className = 'erro'; msg.textContent = 'Esta chave venceu em ' + p.exp + '. Peça uma chave nova.'; return; }
-  try { localStorage.setItem('licenca_chave', chave); } catch (e) { }
-  msg.className = 'ok'; msg.textContent = 'Liberado! Válido por mais ' + dias + ' dia(s).';
-  setTimeout(() => { $('trava').style.display = 'none'; }, 700);
+  if (dias < 0) { msg.className = 'erro'; msg.textContent = 'Esta chave venceu em ' + licFmt(p.exp) + '. Peça uma chave nova.'; return; }
+  licSet('licenca_chave', chave);
+  licSet('licenca_hwm', licHoje());            // ponto de partida do anti-retrocesso
+  licSet('licenca_graca', String(LIC_GRACA));
+  if (await licChecar()) { msg.className = 'ok'; msg.textContent = 'Liberado! Válido por mais ' + dias + ' dia(s).'; }
 };
 licChecar();
 
