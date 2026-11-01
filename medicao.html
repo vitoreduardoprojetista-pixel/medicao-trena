@@ -183,10 +183,14 @@
   #travaMsg { font-size: 13px; margin-top: 10px; min-height: 18px; font-weight: 700; }
   #travaMsg.erro { color: var(--danger); }
   #travaMsg.ok { color: var(--ok-ink); }
+  /* Marca d'água de licença (nome do cliente) */
+  #licSelo { display: none; background: var(--tint); color: var(--brand-ink); border: 1px solid var(--tint-bd); border-radius: 10px; padding: 7px 11px; margin-bottom: 12px; font-size: 12px; font-weight: 600; line-height: 1.5; }
+  #licSelo b { font-weight: 800; }
 </style>
 </head>
 <body>
 <h1>Medição de Esquadrias <button id="btnConfig" title="Configurações">⚙</button></h1>
+<div id="licSelo"></div>
 <div id="status">1) Abra o caderno de medição (PDF do CEM). 2) Conecte a trena. 3) Toque num campo e meça.</div>
 <div class="botoes">
   <button id="btnConectar">Conectar Mileseey</button>
@@ -369,6 +373,16 @@ function licSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
 function lerLic() { return licGet('licenca_chave') || ''; }
 function licTravar(msg) { const m = $('travaMsg'); if (m) { m.className = msg ? 'erro' : ''; m.textContent = msg || ''; } $('trava').style.display = 'flex'; }
 function licDestravar() { $('trava').style.display = 'none'; }
+function licEsc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+// Marca d'água: mostra para quem a licença foi liberada (freio contra compartilhamento de chave).
+function licMostrarSelo(p) {
+  const el = $('licSelo'); if (!el) return;
+  if (!LIC_EXIGIR || !p) { el.style.display = 'none'; el.textContent = ''; return; }
+  const nome = (p.n && p.n !== '-') ? p.n : 'Licença ativa';
+  const dias = licDiasRestantes(p.exp);
+  el.innerHTML = '🔒 Licenciado para: <b>' + licEsc(nome) + '</b> · vence ' + licFmt(p.exp) + (dias >= 0 ? ' (' + dias + ' dia' + (dias === 1 ? '' : 's') + ')' : '');
+  el.style.display = 'block';
+}
 // Confere a licença. Além do vencimento, guarda a data mais avançada já vista (hwm):
 // se o relógio "voltar no tempo" (hoje < hwm), libera só LIC_GRACA aberturas e depois trava,
 // evitando que a pessoa atrase a data do celular para continuar usando após o vencimento.
@@ -387,6 +401,7 @@ async function licChecar() {
     licSet('licenca_graca', String(g - 1));
   }
   licDestravar();
+  licMostrarSelo(p);
   return true;
 }
 if ($('travaOk')) $('travaOk').onclick = async () => {
