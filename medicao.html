@@ -122,7 +122,7 @@
   #anexosBar { background: var(--card); border-radius: 14px; padding: 13px; margin-bottom: 12px; display: none; box-shadow: var(--shadow); }
   #anexosBar .tit { font-size: 13px; font-weight: 700; margin-bottom: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
   #anexosGaleria { margin-top: 2px; }
-  #anexosGaleria:empty::before { content: "Nenhum croqui ou foto ainda."; font-size: 12px; color: var(--soft); }
+  #anexosGaleria:empty::before { content: "Nenhum desenho ou foto ainda."; font-size: 12px; color: var(--soft); }
   .anexoThumb { position: relative; display: inline-block; margin: 4px; vertical-align: top; }
   .anexoThumb img { height: 92px; border: 1px solid var(--line2); border-radius: 10px; display: block; background: #fff; }
   .anexoThumb .rem { position: absolute; top: -7px; right: -7px; background: var(--danger); color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 15px; padding: 0; line-height: 24px; box-shadow: var(--shadow); }
@@ -132,6 +132,22 @@
   #extrasBar .tit { font-size: 13px; font-weight: 700; margin-bottom: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
   #extrasGaleria { margin-top: 6px; }
   #extrasGaleria:empty::before { content: "Nenhum item extra ainda."; font-size: 12px; color: var(--soft); }
+  .exCard { padding: 12px; margin: 0 0 10px; border: 1.5px solid var(--line); box-shadow: none; }
+  .exTopo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .exNum { background: var(--grad); color: #fff; font-weight: 800; font-size: 13px; border-radius: 999px; min-width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
+  .exOrd { display: flex; gap: 6px; }
+  .exOrd button { padding: 4px 12px; font-size: 13px; min-height: 0; }
+  .exOrd button:disabled { opacity: .35; }
+  .exCorpo { display: flex; gap: 10px; align-items: flex-start; }
+  .exCroqui { width: 92px; height: 120px; flex: none; border: 1px solid var(--line2); border-radius: 10px; background: #fff; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .exCroqui img { width: 100%; height: 100%; object-fit: contain; }
+  .exCP { font-weight: 900; font-size: 12px; text-align: center; line-height: 1.25; color: #111; }
+  .exInfo { flex: 1; min-width: 0; }
+  .exInfo .desc { margin: 3px 0 4px; }
+  .exFlags { font-size: 12px; color: var(--ok-ink); background: var(--ok-soft); border-radius: 8px; padding: 5px 8px; margin-top: 8px; }
+  .exAcoes { margin-top: 10px; }
+  .exAcoes button { font-size: 14px; padding: 9px 8px; }
+  .exAcoes .exRem { flex: 0 0 46px; background: var(--danger); }
   .extraThumb { position: relative; display: inline-block; margin: 4px; vertical-align: top; width: 92px; }
   .extraThumb img { width: 92px; height: 92px; object-fit: cover; border: 1px solid var(--line2); border-radius: 10px; display: block; background: #fff; }
   .extraThumb .legenda { font-size: 10px; color: #4b5563; text-align: center; margin-top: 2px; line-height: 1.2; }
@@ -234,18 +250,18 @@
 </div>
 <button id="btnReordenar" class="sec" style="display:none;width:100%;font-size:13px;padding:8px;margin-bottom:8px">↕ Mudar ordem das esquadrias</button>
 <div id="itens"></div>
+<div id="extrasBar">
+  <div class="tit" id="extrasTit">Itens extras (incluídos no fim do caderno)</div>
+  <button id="btnIncluirExtra" class="cl" style="width:100%">➕ Incluir item extra</button>
+  <div id="extrasGaleria"></div>
+</div>
 <div id="anexosBar">
-  <div class="tit">Croquis e anexos (vão no fim do PDF)</div>
+  <div class="tit">Desenhos e anexos (vão no fim do PDF)</div>
   <div class="linha">
     <button id="btnFoto" class="cl">📷 Escanear / foto</button>
     <button id="btnDesenhar" class="cl">✏️ Desenhar à mão</button>
   </div>
   <div id="anexosGaleria"></div>
-</div>
-<div id="extrasBar">
-  <div class="tit" id="extrasTit">Itens extras (incluídos no fim do caderno)</div>
-  <button id="btnIncluirExtra" class="cl" style="width:100%">➕ Incluir item extra</button>
-  <div id="extrasGaleria"></div>
 </div>
 <input type="file" id="fotoInput" accept="image/*" capture="environment" multiple>
 <div class="linha" id="acoesFim2" style="display:none">
@@ -1540,6 +1556,9 @@ function desenharExtras() {
   $('btnIncluirExtra').textContent = obra.nova ? '➕ Incluir esquadria' : '➕ Incluir item extra';
   const g = $('extrasGaleria');
   g.innerHTML = '';
+  // obra nova: o caderno vai se montando na tela — cartões das esquadrias em sequência, botão "Incluir" no fim
+  if (obra.nova) bar.appendChild($('btnIncluirExtra')); else bar.insertBefore($('btnIncluirExtra'), g);
+  if (obra.nova) { desenharCartoesObra(g); return; }
   extras.forEach((ex, k) => {
     const c = ex.campos || {};
     const fin = ex.finalidade === 'fab' ? 'fabric.' : 'orçam.';
@@ -1561,6 +1580,43 @@ function desenharExtras() {
     if (!confirm(obra.nova ? 'Remover esta esquadria?' : 'Remover este item extra?')) return;
     if (ex) delete flags[ex.id];
     extras.splice(k, 1); salvar(); desenharExtras();
+  });
+}
+function desenharCartoesObra(g) {
+  extras.forEach((ex, k) => {
+    const c = ex.campos || {}, tipo = c.tipo || tipoPadrao(k);
+    const fin = ex.finalidade === 'fab' ? 'Para fabricação' : 'Para orçamento';
+    const fl = flagsResumo(ex.id);
+    const d = document.createElement('div');
+    d.className = 'item exCard';
+    d.innerHTML = `<div class="exTopo"><span class="exNum">${k + 1}</span>
+        <div class="exOrd"><button class="sec" data-sobe="${k}" ${k ? '' : 'disabled'} title="Subir">▲</button><button class="sec" data-desce="${k}" ${k < extras.length - 1 ? '' : 'disabled'} title="Descer">▼</button></div></div>
+      <div class="exCorpo"><div class="exCroqui" id="exq-${k}"></div>
+      <div class="exInfo"><h2>${licEsc(tipo)} <span style="font-weight:400;font-size:13px;color:#6b7280">(qtde ${licEsc(c.qt || '1')})</span></h2>
+      <div class="loc">${licEsc(c.loc || '—')}</div>
+      ${c.desc ? `<div class="desc">${licEsc(c.desc)}</div>` : ''}
+      <div class="prev">${c.L || c.A ? `<b>${licEsc(c.L || '—')} × ${licEsc(c.A || '—')} mm</b> · ` : ''}${fin}</div></div></div>
+      ${fl.length ? `<div class="exFlags">${fl.map(licEsc).join(' · ')}</div>` : ''}
+      ${c.obs ? `<div class="exFlags">OBS: ${licEsc(c.obs)}</div>` : ''}
+      <div class="linha exAcoes"><button class="sec" data-edt="${k}">✎ Editar</button><button class="${fl.length ? 'ok' : 'cl'}" data-flg="${k}">⚙ Flags${fl.length ? ' (' + fl.length + ')' : ''}</button><button class="exRem" data-rem="${k}">✕</button></div>`;
+    g.appendChild(d);
+    // croqui: o desenho à mão ou "CONFORME PROJETO" (como sai no caderno)
+    const box = d.querySelector('.exCroqui');
+    const conforme = () => { box.innerHTML = '<div class="exCP">CONFORME<br>PROJETO</div>'; };
+    if (!ex.base) conforme();
+    else desenhoVazio(ex.base).then(v => { if (v) conforme(); else box.innerHTML = `<img src="${ex.base}" alt="croqui">`; });
+  });
+  if (!extras.length) g.innerHTML = '';
+  const mover = (k, d) => { const j = k + d; if (j < 0 || j >= extras.length) return; [extras[k], extras[j]] = [extras[j], extras[k]]; salvar(); desenharExtras(); };
+  g.querySelectorAll('[data-sobe]').forEach(el => el.onclick = () => mover(+el.dataset.sobe, -1));
+  g.querySelectorAll('[data-desce]').forEach(el => el.onclick = () => mover(+el.dataset.desce, 1));
+  g.querySelectorAll('[data-edt]').forEach(el => el.onclick = () => abrirExtraDesenho(extras[+el.dataset.edt]));
+  g.querySelectorAll('[data-flg]').forEach(el => el.onclick = () => abrirWizardExtra(extras[+el.dataset.flg]));
+  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => {
+    const k = +el.dataset.rem, ex = extras[k];
+    if (!confirm('Remover esta esquadria?')) return;
+    if (ex) delete flags[ex.id];
+    extras.splice(k, 1); salvar(); desenharTudo();
   });
 }
 $('btnIncluirExtra').onclick = () => {
