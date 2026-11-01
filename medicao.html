@@ -172,8 +172,9 @@
   #draw.modoExtra .medirMini { display: inline-block; }
   #labTipo { display: none !important; }
   #draw.modoExtra #labTipo { display: flex !important; }
-  #labDesc { display: none !important; }
-  #draw.modoExtra #labDesc { display: flex !important; }
+  #labDesc, #labLinha { display: none !important; }
+  #draw.modoExtra #labDesc, #draw.modoExtra #labLinha { display: flex !important; }
+  #dcLinha { text-transform: uppercase; }
   #drawCampos textarea { font-size: 15px; padding: 8px; border: 1.5px solid var(--line2); border-radius: 9px; width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; text-transform: uppercase; }
   #draw.modoExtra #labPeit { display: none; }  /* no item extra o peitoril vem pelas flags (alvenaria) */
   #extraFinal { display: none; background: var(--card); padding: 9px 11px; align-items: center; gap: 8px; border-top: 1px solid var(--line); }
@@ -304,7 +305,8 @@
   </div>
   <div id="drawCampos">
     <label id="labTipo" class="full">Tipo<input id="dcTipo" placeholder="ex.: ADC-01" autocapitalize="characters"></label>
-    <label id="labDesc" class="full">Descrição da esquadria<textarea id="dcDesc" rows="2" placeholder="ex.: JANELA DE CORRER 2 FOLHAS, LINHA SUPREMA, VIDRO TEMPERADO 6MM INCOLOR" autocapitalize="characters"></textarea></label>
+    <label id="labDesc" class="full">Descrição da esquadria<textarea id="dcDesc" rows="2" placeholder="ex.: PORTA DE CORRER 2 FOLHAS, VIDRO TEMPERADO 6MM INCOLOR" autocapitalize="characters"></textarea></label>
+    <label id="labLinha" class="full">Linha<input id="dcLinha" placeholder="ex.: GOLD" autocapitalize="characters"></label>
     <label>Largura<span class="comMedir"><input id="dcL" inputmode="numeric" placeholder="ex.: 1200"><button type="button" id="dcLMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Altura<span class="comMedir"><input id="dcA" inputmode="numeric" placeholder="ex.: 1500"><button type="button" id="dcAMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
@@ -1418,7 +1420,7 @@ let drawCtx = null, desenhando = false, editIndex = null;
 let drawExtra = null;   // null = croqui/anexo normal; { ex } quando o desenho é de um item extra (ex=null se novo)
 let alvoExtra = null;   // 'L' | 'A': campo do item extra armado p/ receber a próxima medida da trena
 let drawFinalidade = 'orc';  // 'orc' | 'fab' do item extra em edição
-const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs', 'dcTipo', 'dcDesc'];
+const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs', 'dcTipo', 'dcDesc', 'dcLinha'];
 function setFinalidade(f) { drawFinalidade = f; $('finOrc').classList.toggle('on', f === 'orc'); $('finFab').classList.toggle('on', f === 'fab'); }
 function fecharModoExtra() { drawExtra = null; alvoExtra = null; $('draw').classList.remove('modoExtra'); $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado'); }
 function prepararCanvas() {
@@ -1441,6 +1443,7 @@ function preencherCampos(c) {
   $('dcL').value = c.L || ''; $('dcA').value = c.A || ''; $('dcQt').value = c.qt || '';
   $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
   $('dcDesc').value = c.desc || '';
+  $('dcLinha').value = c.linha || '';
 }
 // Abre o editor de desenho em "modo item extra": campos L/A medíveis pela trena. ex=null cria um novo.
 function abrirExtraDesenho(ex) {
@@ -1474,7 +1477,7 @@ function posCanvas(ev) {
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
 function lerCamposDesenho() {
-  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase() };
+  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase(), linha: $('dcLinha').value.replace(/\s+/g, ' ').trim().toUpperCase().replace(/^LINHA\s+/, '') };
 }
 // Monta a imagem final: cabeçalho com os campos digitados + o desenho (base) embaixo.
 function comporDesenho(base, campos) {
@@ -1596,7 +1599,7 @@ function desenharCartoesObra(g) {
       <div class="exCorpo"><div class="exCroqui" id="exq-${k}"></div>
       <div class="exInfo"><h2>${licEsc(tipo)} <span style="font-weight:400;font-size:13px;color:#6b7280">(qtde ${licEsc(c.qt || '1')})</span></h2>
       <div class="loc">${licEsc(c.loc || '—')}</div>
-      ${c.desc ? `<div class="desc">${licEsc(c.desc)}</div>` : ''}
+      ${descComLinha(c) ? `<div class="desc">${licEsc(descComLinha(c))}</div>` : ''}
       <div class="prev">${c.L || c.A ? `<b>${licEsc(c.L || '—')} × ${licEsc(c.A || '—')} mm</b> · ` : ''}${fin}</div></div></div>
       ${fl.length ? `<div class="exFlags">${fl.map(licEsc).join(' · ')}</div>` : ''}
       ${c.obs ? `<div class="exFlags">OBS: ${licEsc(c.obs)}</div>` : ''}
@@ -1785,7 +1788,7 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
   }
   // rótulo no topo da peça
   const finTxt = ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO';
-  const desc = String(c.desc || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const desc = descComLinha(c);
   if (!desc) {
     pg.drawText(finTxt, { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
     pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
@@ -1907,6 +1910,12 @@ async function anexarImagens(doc, fonte, negrito, cinza, base) {
   }
 }
 // Tipo sugerido do item: ADC-01, ADC-02… nos extras de um caderno; CX01, CX02… numa obra nova.
+// Descrição como sai no caderno: "PORTA DE CORRER 2 FOLHAS - LINHA GOLD"
+function descComLinha(c) {
+  const d = String((c && c.desc) || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const l = String((c && c.linha) || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  return [d, l ? 'LINHA ' + l : ''].filter(Boolean).join(' - ');
+}
 function tipoPadrao(k) { return (obra.nova ? 'CX' : 'ADC-') + String(k + 1).padStart(2, '0'); }
 
 
