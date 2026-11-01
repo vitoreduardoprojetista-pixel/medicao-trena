@@ -156,6 +156,9 @@
   #draw.modoExtra .medirMini { display: inline-block; }
   #labTipo { display: none !important; }
   #draw.modoExtra #labTipo { display: flex !important; }
+  #labDesc { display: none !important; }
+  #draw.modoExtra #labDesc { display: flex !important; }
+  #drawCampos textarea { font-size: 15px; padding: 8px; border: 1.5px solid var(--line2); border-radius: 9px; width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; text-transform: uppercase; }
   #draw.modoExtra #labPeit { display: none; }  /* no item extra o peitoril vem pelas flags (alvenaria) */
   #extraFinal { display: none; background: var(--card); padding: 9px 11px; align-items: center; gap: 8px; border-top: 1px solid var(--line); }
   #draw.modoExtra #extraFinal { display: flex; }
@@ -288,6 +291,7 @@
   </div>
   <div id="drawCampos">
     <label id="labTipo" class="full">Tipo<input id="dcTipo" placeholder="ex.: ADC-01" autocapitalize="characters"></label>
+    <label id="labDesc" class="full">Descrição da esquadria<textarea id="dcDesc" rows="2" placeholder="ex.: JANELA DE CORRER 2 FOLHAS, LINHA SUPREMA, VIDRO TEMPERADO 6MM INCOLOR" autocapitalize="characters"></textarea></label>
     <label>Largura<span class="comMedir"><input id="dcL" inputmode="numeric" placeholder="ex.: 1200"><button type="button" id="dcLMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Altura<span class="comMedir"><input id="dcA" inputmode="numeric" placeholder="ex.: 1500"><button type="button" id="dcAMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
@@ -1396,7 +1400,7 @@ let drawCtx = null, desenhando = false, editIndex = null;
 let drawExtra = null;   // null = croqui/anexo normal; { ex } quando o desenho é de um item extra (ex=null se novo)
 let alvoExtra = null;   // 'L' | 'A': campo do item extra armado p/ receber a próxima medida da trena
 let drawFinalidade = 'orc';  // 'orc' | 'fab' do item extra em edição
-const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs', 'dcTipo'];
+const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs', 'dcTipo', 'dcDesc'];
 function setFinalidade(f) { drawFinalidade = f; $('finOrc').classList.toggle('on', f === 'orc'); $('finFab').classList.toggle('on', f === 'fab'); }
 function fecharModoExtra() { drawExtra = null; alvoExtra = null; $('draw').classList.remove('modoExtra'); $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado'); }
 function prepararCanvas() {
@@ -1418,6 +1422,7 @@ function preencherCampos(c) {
   c = c || {};
   $('dcL').value = c.L || ''; $('dcA').value = c.A || ''; $('dcQt').value = c.qt || '';
   $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
+  $('dcDesc').value = c.desc || '';
 }
 // Abre o editor de desenho em "modo item extra": campos L/A medíveis pela trena. ex=null cria um novo.
 function abrirExtraDesenho(ex) {
@@ -1451,7 +1456,7 @@ function posCanvas(ev) {
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
 function lerCamposDesenho() {
-  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase() };
+  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase() };
 }
 // Monta a imagem final: cabeçalho com os campos digitados + o desenho (base) embaixo.
 function comporDesenho(base, campos) {
@@ -1721,8 +1726,20 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
     for (const u of linhas) limpa(33, 78, u.y);    // eco do tipo (CXxx) nas linhas de medida
   }
   // rótulo no topo da peça
-  pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
-  pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
+  const finTxt = ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO';
+  const desc = String(c.desc || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  if (!desc) {
+    pg.drawText(finTxt, { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
+    pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
+  } else {
+    // como no caderno: descrição em preto no topo do quadro (até 3 linhas), com a finalidade e o tipo/local
+    pg.drawText(finTxt, { x: 171, y: lado.y + 61, size: 10, font: negrito, color: azul });
+    const larg = 405; let tam = 7.8, linhas;
+    const quebra = t => { const out = []; let l = ''; for (const w of t.split(' ')) { const tl = l ? l + ' ' + w : w; if (fonte.widthOfTextAtSize(tl, tam) > larg && l) { out.push(l); l = w; } else l = tl; } if (l) out.push(l); return out; };
+    while ((linhas = quebra(desc)).length > 3 && tam > 6) tam -= 0.4;
+    linhas.slice(0, 3).forEach((l, k) => pg.drawText(l, { x: 171, y: lado.y + 50 - k * (tam + 1.6), size: tam, font: fonte, color: preto }));
+    pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 17, size: 8.5, font: negrito, color: preto });
+  }
   // croqui: desenho do usuário; sem desenho à mão → "CONFORME PROJETO" em letras grandes
   if (!ex.base || await desenhoVazio(ex.base)) {
     const cx = (cqX + cqX1) / 2, cy = (cqYb + cqYt) / 2, tam = 18;
