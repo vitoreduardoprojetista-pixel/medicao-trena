@@ -323,8 +323,8 @@
 <div id="trava">
   <div class="travaCard">
     <h2>Liberar aplicativo</h2>
-    <p>Cole aqui a chave de liberação que você recebeu. Ela libera o app por um período.</p>
-    <textarea id="travaChave" placeholder="Cole a chave aqui" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    <p>Escaneie o QR de ativação que você recebeu — o app libera sozinho. Se recebeu por texto, cole aqui o código ou o link.</p>
+    <textarea id="travaChave" placeholder="Cole o código ou o link aqui" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
     <button id="travaOk" class="ok">Liberar</button>
     <div id="travaMsg"></div>
   </div>
@@ -389,7 +389,7 @@ function licMostrarSelo(p) {
 async function licChecar() {
   if (!LIC_EXIGIR) return true;
   const p = await licValidar(lerLic());
-  if (!p) { licTravar(''); return false; }
+  if (!p) { licTravar(_licErro); _licErro = ''; return false; }
   const hoje = licHoje();
   let hwm = licGet('licenca_hwm') || '';
   if (!hwm || hoje > hwm) { hwm = hoje; licSet('licenca_hwm', hwm); }
@@ -404,19 +404,44 @@ async function licChecar() {
   licMostrarSelo(p);
   return true;
 }
-if ($('travaOk')) $('travaOk').onclick = async () => {
-  const chave = $('travaChave').value.trim();
-  const msg = $('travaMsg'); msg.className = '';
-  const p = await licValidar(chave);
-  if (!p) { msg.className = 'erro'; msg.textContent = 'Chave inválida. Confira se copiou a chave inteira.'; return; }
-  const dias = licDiasRestantes(p.exp);
-  if (dias < 0) { msg.className = 'erro'; msg.textContent = 'Esta chave venceu em ' + licFmt(p.exp) + '. Peça uma chave nova.'; return; }
-  licSet('licenca_chave', chave);
+let _licErro = ''; // motivo da última ativação por QR que falhou (mostrado pela licChecar)
+// Ativação por token: aceita a chave, o código ou a URL inteira do QR (#at=...).
+// Se o token tiver "act" (convite por QR), ele só vale até esse instante (janela de 10 min).
+// Retorna { ok, p } ou { ok:false, motivo:'invalida'|'qr_expirado'|'venceu', p }.
+async function licAtivar(tokenOuUrl) {
+  let t = String(tokenOuUrl || '').trim();
+  const h = t.indexOf('#at='); if (h >= 0) t = t.slice(h + 4);
+  else { const q = t.indexOf('at='); if (q >= 0 && /:\/\//.test(t)) t = t.slice(q + 3); }
+  t = decodeURIComponent(t.trim());
+  const p = await licValidar(t);
+  if (!p) return { ok: false, motivo: 'invalida' };
+  if (p.act && Date.now() > Number(p.act)) return { ok: false, motivo: 'qr_expirado', p };
+  if (licDiasRestantes(p.exp) < 0) return { ok: false, motivo: 'venceu', p };
+  licSet('licenca_chave', t);                  // guarda a liberação local (vale até exp)
   licSet('licenca_hwm', licHoje());            // ponto de partida do anti-retrocesso
   licSet('licenca_graca', String(LIC_GRACA));
-  if (await licChecar()) { msg.className = 'ok'; msg.textContent = 'Liberado! Válido por mais ' + dias + ' dia(s).'; }
+  return { ok: true, p };
+}
+// Se o app abriu por um QR (URL com #at=...), ativa sozinho e limpa o endereço.
+async function licProcessarHash() {
+  const m = (location.hash || '').match(/at=([^&]+)/);
+  if (!m) return;
+  const r = await licAtivar(m[1]);
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+  if (!r.ok) _licErro = { invalida: 'QR de ativação inválido.', qr_expirado: 'Este QR de ativação expirou (vale 10 min). Peça um novo.', venceu: 'Esta liberação já venceu. Peça uma nova.' }[r.motivo] || '';
+}
+if ($('travaOk')) $('travaOk').onclick = async () => {
+  const entrada = $('travaChave').value.trim();
+  const msg = $('travaMsg'); msg.className = '';
+  const r = await licAtivar(entrada);
+  if (!r.ok) {
+    msg.className = 'erro';
+    msg.textContent = { invalida: 'Chave/QR inválido. Confira se copiou tudo.', qr_expirado: 'Este convite expirou (vale 10 min). Peça um novo.', venceu: 'Esta liberação venceu' + (r.p ? ' em ' + licFmt(r.p.exp) : '') + '. Peça uma nova.' }[r.motivo] || 'Não foi possível ativar.';
+    return;
+  }
+  if (await licChecar()) { msg.className = 'ok'; msg.textContent = 'Liberado! Válido por mais ' + licDiasRestantes(r.p.exp) + ' dia(s).'; }
 };
-licChecar();
+licProcessarHash().then(licChecar);
 
 // ---------- Catálogo de flags do caderno (seções e opções) ----------
 // xRef = x do cabeçalho da seção no PDF (para achar a seção certa na página).

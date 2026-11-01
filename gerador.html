@@ -44,6 +44,10 @@
   .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
   .pill.ok { background: #e7f7f0; color: var(--ok-ink); }
   .pill.no { background: #fde8ec; color: var(--danger); }
+  #qrbox { text-align: center; margin: 8px 0 12px; }
+  #qr { display: inline-block; background: #fff; padding: 12px; border-radius: 14px; box-shadow: var(--shadow); }
+  #qr img, #qr canvas { display: block; }
+  #qrtempo { margin-top: 10px; font-weight: 800; color: var(--brand-ink); }
 </style>
 </head>
 <body>
@@ -74,24 +78,40 @@
     <button data-d="365">365</button><button data-d="0">Outro</button>
   </div>
   <input id="diasOutro" inputmode="numeric" placeholder="Número de dias" style="display:none;margin-top:8px">
-  <button id="gerar" class="ok">Gerar chave</button>
+  <button id="gerar" class="ok">Gerar QR de ativação</button>
   <div id="msgGerar" class="msg"></div>
 </div>
 
 <div class="card" id="saida">
-  <h2>3 · Chave criada</h2>
+  <h2>3 · QR de ativação</h2>
   <p class="ajuda" id="resumo"></p>
-  <label>Chave (copie e mande para o cliente)</label>
-  <textarea id="chaveOut" readonly rows="4"></textarea>
-  <button id="copiar" class="ok">Copiar chave</button>
+  <div id="qrbox"><div id="qr"></div><div id="qrtempo"></div></div>
+  <label>Ou mande este link (também vale 10 minutos)</label>
+  <textarea id="chaveOut" readonly rows="3"></textarea>
+  <button id="copiar" class="ok">Copiar link</button>
   <button id="compartilhar" class="sec">Compartilhar…</button>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const CHAVE_SEGREDO = 'gerador_segredo';
-let privKey = null, diasSel = 30;
+// Endereço do app (troque aqui se um dia mudar o domínio):
+const APP_URL = 'https://vitoreduardoprojetista-pixel.github.io/medicao-trena/medicao.html';
+let privKey = null, diasSel = 30, _cont = null;
+
+function iniciarContagem(act) {
+  clearInterval(_cont);
+  const el = $('qrtempo');
+  const tick = () => {
+    const ms = act - Date.now();
+    if (ms <= 0) { el.textContent = '⏱ QR expirado — gere um novo.'; el.style.color = '#e11d48'; clearInterval(_cont); return; }
+    const s = Math.floor(ms / 1000); el.style.color = '';
+    el.textContent = '⏱ Vale por mais ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  };
+  tick(); _cont = setInterval(tick, 1000);
+}
 
 function fmtData(d) { return d.toLocaleDateString('pt-BR'); }
 
@@ -147,23 +167,29 @@ $('gerar').onclick = async () => {
   const fim = new Date(hoje.getTime() + dias * 86400000);
   const exp = fim.getFullYear() + '-' + String(fim.getMonth() + 1).padStart(2, '0') + '-' + String(fim.getDate()).padStart(2, '0');
   const id = Math.random().toString(36).slice(2, 8);
-  const payload = { n: $('nome').value.trim() || '-', exp, id };
+  const act = Date.now() + 10 * 60 * 1000;      // convite de ativação vale 10 minutos
+  const payload = { n: $('nome').value.trim() || '-', exp, act, id };
   const pb = b64u(new TextEncoder().encode(JSON.stringify(payload)));
   const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privKey, new TextEncoder().encode(pb));
-  const chave = pb + '.' + b64u(sig);
-  $('chaveOut').value = chave;
-  $('resumo').textContent = (payload.n !== '-' ? payload.n + ' · ' : '') + 'libera por ' + dias + ' dia(s), vence em ' + fmtData(fim) + '.';
+  const token = pb + '.' + b64u(sig);
+  const url = APP_URL + '#at=' + token;
+  $('chaveOut').value = url;
+  $('resumo').textContent = (payload.n !== '-' ? payload.n + ' · ' : '') + 'libera por ' + dias + ' dia(s), vence em ' + fmtData(fim) + '. Este QR vale por 10 minutos.';
+  const cont = $('qr'); cont.innerHTML = '';
+  try { new QRCode(cont, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); }
+  catch (e) { cont.textContent = 'Não consegui desenhar o QR, mas o link abaixo funciona.'; }
+  iniciarContagem(act);
   $('saida').style.display = 'block';
   $('saida').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  msg.classList.add('ok'); msg.textContent = 'Chave criada abaixo.';
+  msg.classList.add('ok'); msg.textContent = 'QR criado abaixo.';
 };
 
 $('copiar').onclick = async () => {
-  try { await navigator.clipboard.writeText($('chaveOut').value); $('copiar').textContent = 'Copiado! ✓'; setTimeout(() => $('copiar').textContent = 'Copiar chave', 1500); }
+  try { await navigator.clipboard.writeText($('chaveOut').value); $('copiar').textContent = 'Copiado! ✓'; setTimeout(() => $('copiar').textContent = 'Copiar link', 1500); }
   catch (e) { $('chaveOut').select(); document.execCommand('copy'); }
 };
 $('compartilhar').onclick = async () => {
-  const texto = 'Chave de liberação do aplicativo de medição:\n\n' + $('chaveOut').value;
+  const texto = 'Ative o aplicativo de medição escaneando o QR ou abrindo este link (vale 10 min):\n\n' + $('chaveOut').value;
   if (navigator.share) { try { await navigator.share({ text: texto }); } catch (e) { } }
   else { try { await navigator.clipboard.writeText(texto); $('compartilhar').textContent = 'Copiado! ✓'; setTimeout(() => $('compartilhar').textContent = 'Compartilhar…', 1500); } catch (e) { } }
 };
