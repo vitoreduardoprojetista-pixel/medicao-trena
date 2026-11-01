@@ -39,6 +39,8 @@
     font-size: 20px; font-weight: 800; letter-spacing: .2px; margin: 0 -14px 14px;
     padding: 16px 16px calc(16px + env(safe-area-inset-top, 0px)); padding-top: calc(16px + env(safe-area-inset-top, 0px));
     background: var(--grad); color: #fff; box-shadow: 0 6px 20px rgba(79,70,229,.28); }
+  #btnInicio { color: #fff; text-decoration: none; font-size: 30px; line-height: 1; padding: 0 6px 4px 0; font-weight: 400; }
+  h1 .h1t { flex: 1; }
   #btnConfig { background: rgba(255,255,255,.18); color: #fff; border: 1.5px solid rgba(255,255,255,.4); font-size: 18px; padding: 6px 13px; border-radius: 12px; backdrop-filter: blur(4px); }
   .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .botoes button { min-height: 56px; font-size: 15px; box-shadow: var(--shadow); }
@@ -245,7 +247,7 @@
 </style>
 </head>
 <body>
-<h1>Medição de Esquadrias <button id="btnConfig" title="Configurações">⚙</button></h1>
+<h1><a id="btnInicio" href="index.html" title="Início">‹</a><span class="h1t">Medição de Esquadrias</span><button id="btnConfig" title="Configurações">⚙</button></h1>
 <div id="licSelo"></div>
 <div id="status">1) Abra o caderno de medição (PDF do CEM). 2) Conecte a trena. 3) Toque num campo e meça.</div>
 <div class="botoes">

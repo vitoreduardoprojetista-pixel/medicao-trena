@@ -144,7 +144,7 @@ async function route() {
 }
 
 async function renderHome() {
-  show('#viewHome', 'Medição Trena', false); window.scrollTo(0, 0);
+  show('#viewHome', 'Trena sem Bluetooth', false); window.scrollTo(0, 0);
   $('#homeTrena').textContent = activeProfile().name;
   const obras = (await DB.all()).sort((a, b) => b.criado - a.criado);
   const el = $('#obrasList');
