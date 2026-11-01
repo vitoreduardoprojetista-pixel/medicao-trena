@@ -60,6 +60,8 @@
   button.mini { width: auto; margin: 0; padding: 8px 11px; font-size: 12px; border-radius: 9px; }
   .pill.warn { background: #fff7ed; color: #9a3412; }
   #listaClientes:empty::before { content: ""; }
+  .linhaBackup { display: flex; gap: 8px; margin-top: 14px; }
+  .linhaBackup button { flex: 1; margin: 0; font-size: 13px; padding: 10px; }
 </style>
 </head>
 <body>
@@ -119,6 +121,13 @@
 <div class="card" id="cardClientes" style="display:none">
   <h2>Clientes e vencimentos</h2>
   <div id="listaClientes"></div>
+  <div class="linhaBackup">
+    <button id="exportar" class="sec">⬇ Exportar backup</button>
+    <button id="importar" class="sec">⬆ Importar backup</button>
+    <input type="file" id="arqImport" accept="application/json,.json" style="display:none">
+  </div>
+  <p class="ajuda" style="margin-top:8px">Exporte num aparelho e importe no outro para a lista ficar igual no PC e no celular. (A lista fica salva em cada aparelho.)</p>
+  <div id="msgBackup" class="msg"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -271,6 +280,34 @@ $('compartilhar').onclick = async () => {
   else { try { await navigator.clipboard.writeText(texto); $('compartilhar').textContent = 'Copiado! ✓'; setTimeout(() => $('compartilhar').textContent = 'Compartilhar…', 1500); } catch (e) { } }
 };
 
+$('exportar').onclick = () => {
+  const blob = new Blob([JSON.stringify({ tipo: 'medicao-clientes', v: 1, clientes: lerClientes() }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = 'clientes-medicao-' + new Date().toISOString().slice(0, 10) + '.json'; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  const m = $('msgBackup'); m.className = 'msg ok'; m.textContent = 'Backup exportado. Leve o arquivo para o outro aparelho e use "Importar".';
+};
+$('importar').onclick = () => $('arqImport').click();
+$('arqImport').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const m = $('msgBackup'); m.className = 'msg';
+  try {
+    const data = JSON.parse(await f.text());
+    const imp = Array.isArray(data) ? data : (data.clientes || []);
+    if (!Array.isArray(imp)) throw 0;
+    const atual = lerClientes(); let add = 0, upd = 0;
+    for (const c of imp) {
+      if (!c || !c.nome || !c.exp) continue;
+      const i = atual.findIndex(x => x.nome.toLowerCase() === String(c.nome).toLowerCase());
+      const rec = { id: (i >= 0 ? atual[i].id : (c.id || Math.random().toString(36).slice(2, 9))), nome: c.nome, exp: c.exp, em: c.em || new Date().toISOString().slice(0, 10) };
+      if (i >= 0) { if ((rec.em || '') >= (atual[i].em || '')) { atual[i] = rec; upd++; } }
+      else { atual.push(rec); add++; }
+    }
+    salvarClientes(atual); renderClientes();
+    m.className = 'msg ok'; m.textContent = 'Importado: ' + add + ' novo(s), ' + upd + ' atualizado(s).';
+  } catch (err) { m.className = 'msg erro'; m.textContent = 'Não consegui ler esse arquivo de backup.'; }
+  e.target.value = '';
+};
 $('listaClientes').onclick = e => {
   const re = e.target.closest('[data-reissue]'), de = e.target.closest('[data-del]');
   if (re) {
