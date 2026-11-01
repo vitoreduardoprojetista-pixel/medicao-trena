@@ -42,6 +42,21 @@
   #btnConfig { background: rgba(255,255,255,.18); color: #fff; border: 1.5px solid rgba(255,255,255,.4); font-size: 18px; padding: 6px 13px; border-radius: 12px; backdrop-filter: blur(4px); }
   .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .botoes button { min-height: 56px; font-size: 15px; box-shadow: var(--shadow); }
+  .botoes .novaBtn { grid-column: 1 / -1; background: linear-gradient(135deg, #059669, #0d9488); }
+  #nova { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
+  #novaTopo { background: var(--grad); color: #fff; padding: calc(14px + env(safe-area-inset-top, 0px)) 14px 14px; display: flex; align-items: center; justify-content: space-between; }
+  #novaTopo > span { font-size: 16px; font-weight: 700; }
+  #novaTopo button { font-size: 14px; padding: 8px 14px; }
+  #novaCorpo { flex: 1; overflow: auto; padding: 14px; }
+  #novaForm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+  #novaForm label { display: flex; flex-direction: column; font-size: 12px; font-weight: 600; color: var(--muted); gap: 3px; }
+  #novaForm label.full { grid-column: 1 / -1; }
+  #novaForm input { min-width: 0; width: 100%; box-sizing: border-box; font-size: 16px; padding: 9px 10px; border: 1px solid #d1d5db; border-radius: 10px; text-transform: uppercase; }
+  #novaLista .tit { font-size: 13px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .novaItem { display: flex; gap: 8px; margin-bottom: 8px; }
+  .novaItem button:first-child { flex: 1; text-align: left; }
+  .novaTag { display: table; font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #fff; background: linear-gradient(135deg, #059669, #0d9488); border-radius: 999px; padding: 3px 9px; margin-bottom: 6px; }
+  #btnEditarObra { display: block; margin-top: 8px; font-size: 13px; padding: 7px 12px; }
   #status { padding: 11px 13px; border-radius: 12px; background: var(--card); margin-bottom: 12px; font-size: 14px; line-height: 1.5; box-shadow: var(--shadow); border-left: 4px solid var(--brand); }
   #obra { background: var(--card); border-radius: 14px; padding: 13px; margin-bottom: 12px; font-size: 14px; display: none; box-shadow: var(--shadow); border-left: 4px solid var(--brand2); }
   #escopoBar { background: var(--card); border-radius: 14px; padding: 13px; margin-bottom: 12px; display: none; box-shadow: var(--shadow); }
@@ -199,6 +214,7 @@
   <button id="btnBosch">Conectar Bosch</button>
   <button id="btnTrocarTrena">Conectar outra trena</button>
   <button id="btnAbrir">Abrir caderno</button>
+  <button id="btnNovaObra" class="novaBtn">📝 Medição de nova obra</button>
 </div>
 <input type="file" id="arquivo" accept="application/pdf">
 <div id="obra"></div>
@@ -222,7 +238,7 @@
   <div id="anexosGaleria"></div>
 </div>
 <div id="extrasBar">
-  <div class="tit">Itens extras (incluídos no fim do caderno)</div>
+  <div class="tit" id="extrasTit">Itens extras (incluídos no fim do caderno)</div>
   <button id="btnIncluirExtra" class="cl" style="width:100%">➕ Incluir item extra</button>
   <div id="extrasGaleria"></div>
 </div>
@@ -302,6 +318,21 @@
       <div style="font-size:15px;font-weight:600;margin-bottom:4px">Registro técnico</div>
       <div style="font-size:13px;color:#6b7280;margin:6px 0">Use só se o Claude pedir, para depurar a conexão da trena.</div>
       <button id="btnCopiarLog" class="sec" style="width:100%">Copiar registro</button>
+    </div>
+  </div>
+</div>
+
+<!-- Medição de nova obra: caderno do zero (dados do cliente/obra) -->
+<div id="nova">
+  <div id="novaTopo"><span>📝 Medição de nova obra</span><button id="novaFechar" class="sec">Fechar</button></div>
+  <div id="novaCorpo">
+    <div id="novaLista"></div>
+    <div class="item" style="margin:0">
+      <div style="font-size:15px;font-weight:700;margin-bottom:2px" id="novaFormTit">Dados do cliente e da obra</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px">Para quando você estiver sem o caderno da obra, ou para medir para orçamento. O caderno sai no mesmo padrão do original (capa, cabeçalho, quadros e flags).</div>
+      <div id="novaForm"></div>
+      <button id="novaOk" class="ok" style="width:100%;margin-top:12px">Começar a medição ▶</button>
+      <div id="novaMsg" style="font-size:13px;color:#dc2626;margin-top:8px"></div>
     </div>
   </div>
 </div>
@@ -526,13 +557,13 @@ function campos() {
 }
 const nomeCampo = c => (CAMPOS_TODOS.find(x => x[0] === c) || [c, c])[1];
 
-function chaveObra() { return 'medicao_' + (obra.os || nomeArquivo); }
+function chaveObra() { return 'medicao_' + (obra.nova ? 'nova_' : '') + (obra.os || nomeArquivo); }
 function salvar() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras })); } catch (e) { }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras, dados: obra.nova ? obra : undefined })); } catch (e) { }
 }
 // Igual a salvar(), mas avisa quando a memória do celular estoura (fotos são pesadas).
 function salvarComAviso() {
-  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras })); return true; }
+  try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras, dados: obra.nova ? obra : undefined })); return true; }
   catch (e) { status('Memória do celular cheia: o anexo entra no PDF agora, mas pode sumir se você fechar o app. Gere o PDF antes de fechar.'); return false; }
 }
 function carregarSalvo() {
@@ -615,26 +646,24 @@ function acharSecoes(items) {
   return por;
 }
 
-async function abrirPdf(file) {
-  status('Lendo o caderno...');
-  nomeArquivo = file.name;
-  pdfBytes = new Uint8Array(await file.arrayBuffer());
-  const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
-  pdfDoc = doc; croquiCache = {};
-  itens = []; obra = {}; assinatura = null;
-  for (let p = 1; p <= doc.numPages; p++) {
-    const pag = await doc.getPage(p);
+// Lê a estrutura de um caderno: itens (com geometria), dados da obra, assinatura e os textos de cada página.
+async function lerEstrutura(bytes) {
+  const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  const r = { pdf, itens: [], obra: {}, assinatura: null, textos: [] };
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const pag = await pdf.getPage(p);
     const tc = await pag.getTextContent();
     const linhas = emLinhas(tc.items);
+    r.textos.push(tc.items.filter(it => it.str.trim()).map(it => ({ s: it.str.trim(), x: it.transform[4], y: it.transform[5], w: it.width, tam: Math.abs(it.transform[3]) || it.height || 8 })));
     // bloco de assinatura (fim das esquadrias): "RESPONSÁVEL PELA OBRA"
-    if (!assinatura) {
+    if (!r.assinatura) {
       const ass = tc.items.find(it => /RESPONS.?VEL\s+PELA\s+OBRA/i.test(it.str));
-      if (ass) assinatura = { pagina: p - 1, y: ass.transform[5] };
+      if (ass) r.assinatura = { pagina: p - 1, y: ass.transform[5] };
     }
-    if (!obra.os) {
+    if (!r.obra.os) {
       const tudo = linhas.map(l => l.t.map(t => t.s).join(' '));
       const pega = rot => { const s = tudo.find(x => x.includes(rot)); return s ? s.split(rot)[1].trim() : ''; };
-      obra = { os: pega('O.S.:').split(' ')[0], cliente: pega('CLIENTE:'), obra: pega('OBRA:'), end: pega('ENDEREÇO:') };
+      r.obra = { os: pega('O.S.:').split(' ')[0], cliente: pega('CLIENTE:'), obra: pega('OBRA:'), end: pega('ENDEREÇO:') };
     }
     const itensPag = lerPagina(linhas, p - 1);
     // liga cada item desta página aos cabeçalhos de seção (k-ésimo item = k-ésima ocorrência)
@@ -642,10 +671,20 @@ async function abrirPdf(file) {
     itensPag.forEach((it, k) => {
       for (const s of SECOES) { const lista = secs[s.h] || []; if (lista[k]) it.sec[s.h] = lista[k]; }
     });
-    itens.push(...itensPag);
+    r.itens.push(...itensPag);
   }
+  r.itens.forEach((it, idx) => it.id = idx); // id estável na ordem em que o PDF foi lido
+  return r;
+}
+
+async function abrirPdf(file) {
+  status('Lendo o caderno...');
+  nomeArquivo = file.name;
+  pdfBytes = new Uint8Array(await file.arrayBuffer());
+  croquiCache = {};
+  const est = await lerEstrutura(pdfBytes);
+  pdfDoc = est.pdf; itens = est.itens; obra = est.obra; assinatura = est.assinatura;
   medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; extras = []; ativo = null;
-  itens.forEach((it, idx) => it.id = idx); // id estável na ordem em que o PDF foi lido
   carregarSalvo();
   aplicarOrdemSalva();
   // Template em branco por O.S.: na 1ª vez guarda o PDF aberto; depois sempre gera a partir dele
@@ -654,6 +693,8 @@ async function abrirPdf(file) {
   const tpl = await idbGet(tplKey);
   if (tpl && tpl.bytes) { pdfBytes = tpl.bytes instanceof Uint8Array ? tpl.bytes : new Uint8Array(tpl.bytes); if (tpl.nome) nomeArquivo = tpl.nome; }
   else { idbSet(tplKey, { bytes: pdfBytes.slice(), nome: nomeArquivo }); }
+  // o último caderno aberto vira o MODELO de layout da "Medição de nova obra"
+  if (itens.length) idbSet('molde_ultimo', { bytes: pdfBytes.slice(), nome: nomeArquivo });
   const nUn = itens.reduce((s, i) => s + i.unidades.length, 0);
   status(`${itens.length} itens e ${nUn} unidades.`);
   log('Itens lidos: ' + itens.map(i => i.tipo).join(', '));
@@ -674,17 +715,20 @@ function aplicarOrdemSalva() {
 // Renderiza o croqui (desenho) de cada item e guarda como imagem para mostrar no card.
 async function desenharCroquis() {
   if (!pdfDoc) return;
+  const pdfAtual = pdfDoc; // se trocar de obra no meio, para
   const porPag = {};
   itens.forEach((it, i) => { if (it.sec['LADO DE ABERTURA'] && it.sec['TIPO DE TRILHO']) (porPag[it.pagina] = porPag[it.pagina] || []).push(i); });
   const S = 2;
   for (const pag of Object.keys(porPag)) {
     if (porPag[pag].every(i => croquiCache[i])) { porPag[pag].forEach(setCroqui); continue; }
+    if (pdfDoc !== pdfAtual) return;
     try {
-      const page = await pdfDoc.getPage(+pag + 1);
+      const page = await pdfAtual.getPage(+pag + 1);
       const vp = page.getViewport({ scale: S });
       const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
       await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
       const Hpt = vp.height / S;
+      if (pdfDoc !== pdfAtual) return;
       for (const i of porPag[pag]) {
         const it = itens[i], lado = it.sec['LADO DE ABERTURA'], tipo = it.sec['TIPO DE TRILHO'];
         const x0 = 12, x1 = lado.x - 7, yTop = lado.y + 90, yBot = tipo.y + 9;
@@ -707,9 +751,13 @@ function menor(lista) { return lista && lista.length ? Math.min(...lista) : null
 function nMarcadas(i) { const f = flags[itens[i].id] || {}; return Object.keys(f).filter(k => f[k]).length; }
 
 function desenharTudo() {
-  const tem = itens.length > 0;
+  const tem = itens.length > 0 || !!obra.nova;
   $('obra').style.display = tem ? 'block' : 'none';
-  $('obra').innerHTML = `<b>O.S. ${obra.os || ''}</b> · ${obra.cliente || ''}<br>${obra.obra || ''}<br><span style="color:#6b7280">${obra.end || ''}</span>`;
+  $('obra').innerHTML = (obra.nova ? '<div class="novaTag">OBRA NOVA · caderno do zero</div>' : '') +
+    `<b>O.S. ${licEsc(obra.os || '')}</b> · ${licEsc(obra.cliente || '')}<br>${licEsc(obra.obra || '')}<br><span style="color:#6b7280">${licEsc(obra.end || '')}</span>` +
+    (obra.nova ? '<button id="btnEditarObra" class="sec">✎ Dados da obra</button>' : '');
+  if (obra.nova) $('btnEditarObra').onclick = () => abrirNovaObra(obra);
+  $('btnGerar').textContent = obra.nova ? 'Gerar caderno' : 'Gerar PDF preenchido';
   $('escopoBar').style.display = tem ? 'block' : 'none';
   $('acoesFim2').style.display = tem ? 'flex' : 'none';
   $('btnReordenar').style.display = (tem && itens.length > 1) ? 'block' : 'none';
@@ -721,6 +769,7 @@ function desenharTudo() {
   const box = $('itens');
   box.innerHTML = '';
   if (!escopo) { box.innerHTML = tem ? '<div class="item" style="color:#6b7280">Escolha acima: <b>Esquadrias</b>, <b>Contramarcos</b> ou <b>Os dois</b> para começar a medir.</div>' : ''; return; }
+  if (obra.nova && !extras.length) box.innerHTML = '<div class="item" style="color:#6b7280">Toque em <b>➕ Incluir esquadria</b> (logo abaixo) para cada esquadria da obra: desenho ou "conforme projeto", medidas e flags, igual ao caderno.</div>';
   const CPS = campos();
   itens.forEach((it, i) => {
     const d = document.createElement('div');
@@ -856,7 +905,7 @@ function fecharWizard() {
   const ex = wiz && wiz.ex;
   const i = wiz && !ex ? wiz.i : null;
   wiz = null; alvoAlv = null; $('wiz').style.display = 'none'; desenharTudo();
-  if (ex) { const el = $('extrasBar'); if (el) el.scrollIntoView({ block: 'center' }); status('Item extra salvo.'); }
+  if (ex) { const el = $('extrasBar'); if (el) el.scrollIntoView({ block: 'center' }); status(obra.nova ? 'Esquadria salva.' : 'Item extra salvo.'); }
   else if (i != null) { const el = document.querySelector(`[data-opc="${i}"]`); if (el) el.scrollIntoView({ block: 'center' }); }
 }
 
@@ -1300,7 +1349,7 @@ function lerArquivoImagem(file, maxLado = 1600, q = 0.75) {
 function desenharAnexos() {
   const bar = $('anexosBar');
   if (!bar) return;
-  bar.style.display = itens.length ? 'block' : 'none';
+  bar.style.display = (itens.length || obra.nova) ? 'block' : 'none';
   const g = $('anexosGaleria');
   g.innerHTML = '';
   anexos.forEach((a, k) => {
@@ -1362,13 +1411,13 @@ function abrirExtraDesenho(ex) {
   alvoExtra = null;
   $('draw').classList.add('modoExtra');
   $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado');
-  $('drawTitulo').textContent = ex ? 'Editar item extra' : 'Novo item extra';
+  $('drawTitulo').textContent = obra.nova ? (ex ? 'Editar esquadria' : 'Nova esquadria') : (ex ? 'Editar item extra' : 'Novo item extra');
   setFinalidade((ex && ex.finalidade) || 'orc');
   prepararCanvas();
   preencherCampos(ex && ex.campos);
   // Tipo do item adicional: sugere ADC-01, ADC-02... pela ordem, mas fica editável.
   const pos = ex ? extras.indexOf(ex) : extras.length;
-  $('dcTipo').value = (ex && ex.campos && ex.campos.tipo) || ('ADC-' + String((pos < 0 ? extras.length : pos) + 1).padStart(2, '0'));
+  $('dcTipo').value = (ex && ex.campos && ex.campos.tipo) || tipoPadrao(pos < 0 ? extras.length : pos);
   $('draw').style.display = 'flex';
   if (ex && ex.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = ex.base; }
 }
@@ -1466,13 +1515,15 @@ function flagsResumo(id) {
 function desenharExtras() {
   const bar = $('extrasBar');
   if (!bar) return;
-  bar.style.display = itens.length ? 'block' : 'none';
+  bar.style.display = (itens.length || obra.nova) ? 'block' : 'none';
+  $('extrasTit').textContent = obra.nova ? 'Esquadrias da obra' : 'Itens extras (incluídos no fim do caderno)';
+  $('btnIncluirExtra').textContent = obra.nova ? '➕ Incluir esquadria' : '➕ Incluir item extra';
   const g = $('extrasGaleria');
   g.innerHTML = '';
   extras.forEach((ex, k) => {
     const c = ex.campos || {};
     const fin = ex.finalidade === 'fab' ? 'fabric.' : 'orçam.';
-    const legenda = (c.tipo || 'ADC-' + String(k + 1).padStart(2, '0')) + ' · ' + (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '') + ` · ${fin}`;
+    const legenda = (c.tipo || tipoPadrao(k)) + ' · ' + (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '') + ` · ${fin}`;
     const nf = flagsResumo(ex.id).length;
     const d = document.createElement('div');
     d.className = 'extraThumb';
@@ -1487,14 +1538,14 @@ function desenharExtras() {
   g.querySelectorAll('[data-flg]').forEach(el => el.onclick = () => abrirWizardExtra(extras[+el.dataset.flg]));
   g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => {
     const k = +el.dataset.rem, ex = extras[k];
-    if (!confirm('Remover este item extra?')) return;
+    if (!confirm(obra.nova ? 'Remover esta esquadria?' : 'Remover este item extra?')) return;
     if (ex) delete flags[ex.id];
     extras.splice(k, 1); salvar(); desenharExtras();
   });
 }
 $('btnIncluirExtra').onclick = () => {
   if (escopo !== 'es' && escopo !== 'cm' && escopo !== 'ambos') {
-    status('Escolha primeiro Esquadrias, Contramarcos ou Os dois para incluir um item extra.');
+    status('Escolha primeiro Esquadrias, Contramarcos ou Os dois para incluir ' + (obra.nova ? 'uma esquadria.' : 'um item extra.'));
     return;
   }
   abrirExtraDesenho(null);
@@ -1569,65 +1620,18 @@ async function gerarPdf() {
   });
 
   // 4) croquis e fotos como páginas no fim do caderno
-  if (anexos.length) {
-    const base = paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 };
-    const margem = 28, titH = 22;
-    for (let k = 0; k < anexos.length; k++) {
-      const a = anexos[k];
-      let img;
-      try { img = a.tipo === 'foto' ? await doc.embedJpg(dataUrlParaBytes(a.data)) : await doc.embedPng(dataUrlParaBytes(a.data)); }
-      catch (e) { try { img = await doc.embedPng(dataUrlParaBytes(a.data)); } catch (e2) { log('Anexo ' + (k + 1) + ': ' + e2.message); continue; } }
-      const pg = doc.addPage([base.width, base.height]);
-      const maxW = base.width - margem * 2, maxH = base.height - margem * 2 - titH;
-      const esc = Math.min(maxW / img.width, maxH / img.height);
-      const w = img.width * esc, h = img.height * esc;
-      pg.drawText((a.tipo === 'foto' ? 'Croqui / foto ' : 'Desenho ') + (k + 1), { x: margem, y: base.height - margem - 12, size: 12, font: negrito, color: cinza });
-      pg.drawImage(img, { x: (base.width - w) / 2, y: base.height - margem - titH - h, width: w, height: h });
-    }
-  }
+  await anexarImagens(doc, fonte, negrito, cinza, paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 });
 
-  // 5) itens extras no formato do caderno. Usa um item real de 1 unidade como "carimbo": recorta do
-  //    PDF em branco (a) o bloco do item até a 1ª linha de medida, (b) a linha de medida e (c) o
-  //    separador. Monta cada extra com UMA LINHA DE MEDIDA POR UNIDADE (qtde 3 = 3 linhas, como o
-  //    caderno faz), empilhando os blocos de cima pra baixo e abrindo página nova quando não cabe.
+  // 5) itens extras no formato do caderno (carimbo de um item real, uma linha de medida por unidade),
+  //    inseridos logo DEPOIS da última página de esquadria (antes da assinatura e dos anexos).
   if (extras.length) {
-    const molde = escolherMolde();
+    const molde = escolherMolde(itens);
     if (molde) {
       const moldeDoc = await PDFDocument.load(pdfBytes); // molde pristino (sem as medidas já desenhadas)
-      const st = molde.slot, ladoY = st.sec['LADO DE ABERTURA'].y;
-      const uT = st.unidades.reduce((a, u) => (u.y > a.y ? u : a)); // linha de medida de cima
-      const PASSO = 19.84, SEP = 16;                 // altura da linha e faixa do separador (FastReport)
-      const topoRel = ladoY + 73, rowB = uT.y - 8.9; // topo do bloco e base da 1ª linha de medida
-      const srcPg = moldeDoc.getPage(molde.pagina);
-      const { width: PW, height: PH } = srcPg.getSize();
-      const pA = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - 1, top: topoRel });
-      const pR = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: uT.y - 9.9, top: uT.y + 12.1 });
-      const pS = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - SEP, top: rowB + 1 });
-      const hBase = topoRel - rowB + SEP, MAXN = Math.max(1, Math.floor((PH - 70 - hBase) / PASSO) + 1);
-      const TOPO = Math.min(PH - 28, topoRel), BASE = 36;
-      // desloca tudo que carimbarExtra desenha em dy (coordenadas do carimbo → posição na página)
-      const mover = (pg, dy) => ({
-        drawRectangle: o => pg.drawRectangle({ ...o, y: o.y + dy }),
-        drawText: (t, o) => pg.drawText(t, { ...o, y: o.y + dy }),
-        drawImage: (i, o) => pg.drawImage(i, { ...o, y: o.y + dy }),
-        drawLine: o => pg.drawLine({ ...o, start: { x: o.start.x, y: o.start.y + dy }, end: { x: o.end.x, y: o.end.y + dy } })
-      });
-      // Insere os extras logo DEPOIS da última página de esquadria (antes da assinatura e dos anexos).
+      const K = { doc, fonte, negrito, azul, branco, preto, hoje, centro, marcarX };
       let at = assinatura ? assinatura.pagina + 1 : doc.getPageCount();
-      let pg = null, cursor = 0;
-      for (let e = 0; e < extras.length; e++) {
-        const ex = extras[e];
-        let n = parseInt(String((ex.campos && ex.campos.qt) || '1').replace(/\D/g, ''), 10) || 1;
-        if (n > MAXN) { log('Item extra ' + (e + 1) + ': qtde ' + n + ' passa de uma página; saem ' + MAXN + ' linhas.'); n = MAXN; }
-        const h = hBase + (n - 1) * PASSO;
-        if (!pg || cursor - h < BASE) { pg = doc.insertPage(at++, [PW, PH]); cursor = TOPO; }
-        const dy = cursor - topoRel;
-        pg.drawPage(pA, { x: 0, y: rowB - 1 + dy });
-        for (let k = 1; k < n; k++) pg.drawPage(pR, { x: 0, y: uT.y - 9.9 - k * PASSO + dy });
-        pg.drawPage(pS, { x: 0, y: rowB - SEP - (n - 1) * PASSO + dy });
-        await carimbarExtra(mover(pg, dy), st, ex, e, n);
-        cursor -= h;
-      }
+      const { width: PW, height: PH } = moldeDoc.getPage(molde.pagina).getSize();
+      await empilharItens(K, moldeDoc.getPage(molde.pagina), molde.slot, extras, () => doc.insertPage(at++, [PW, PH]));
       // Reposiciona a assinatura: apaga da página da última esquadria e põe numa página só dela,
       // logo após os extras (assim os extras ficam ENTRE a última esquadria e a assinatura).
       if (assinatura) {
@@ -1643,113 +1647,401 @@ async function gerarPdf() {
     }
   }
   return await doc.save();
+}
 
-  // Escolhe o item real que serve de carimbo para os extras: de preferência com 1 unidade e fora
-  // da 1ª página de conteúdo (que tem o cabeçalho da obra).
-  function escolherMolde() {
-    const ok = itens.filter(it => it.sec['LADO DE ABERTURA'] && it.unidades.length && it.cols);
-    if (!ok.length) return null;
-    const primeira = Math.min(...ok.map(it => it.pagina));
-    const slot = ok.find(it => it.unidades.length === 1 && it.pagina !== primeira)
-      || ok.find(it => it.unidades.length === 1) || ok[0];
-    return { pagina: slot.pagina, slot };
+// ---------- Carimbo de item no padrão do caderno (extras e obra nova) ----------
+
+
+// Escolhe o item real que serve de carimbo para os extras: de preferência com 1 unidade e fora
+// da 1ª página de conteúdo (que tem o cabeçalho da obra).
+function escolherMolde(lista) {
+  const ok = lista.filter(it => it.sec['LADO DE ABERTURA'] && it.unidades.length && it.cols);
+  if (!ok.length) return null;
+  const primeira = Math.min(...ok.map(it => it.pagina));
+  const slot = ok.find(it => it.unidades.length === 1 && it.pagina !== primeira)
+    || ok.find(it => it.unidades.length === 1) || ok[0];
+  return { pagina: slot.pagina, slot };
+}
+
+// true se o desenho à mão está em branco (nenhum traço escuro)
+async function desenhoVazio(dataUrl) {
+  try {
+    const img = await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = dataUrl; });
+    const cv = document.createElement('canvas'); cv.width = 125; cv.height = 177;
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+    cx.drawImage(img, 0, 0, cv.width, cv.height);
+    const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+    for (let i = 0; i < d.length; i += 4) if (d[i] < 200 || d[i + 1] < 200 || d[i + 2] < 200) return false;
+    return true;
+  } catch (e) { return false; }
+}
+// Carimba um item extra no slot (geometria de um item real) de uma página-molde clonada.
+async function carimbarExtra(K, pg, slot, ex, idx, n) {
+  const { doc, fonte, negrito, azul, branco, preto, hoje, centro, marcarX } = K;
+  const sec = slot.sec, cols = slot.cols;
+  // linhas de medida: uma por unidade, a partir da linha de cima do carimbo, descendo 19,84pt cada
+  const uT = slot.unidades.length ? slot.unidades.reduce((a, u) => (u.y > a.y ? u : a)) : null;
+  const linhas = uT ? Array.from({ length: Math.max(1, n || 1) }, (_, k) => ({ y: uT.y - k * 19.84, datas: uT.datas.map(d => ({ ...d, y: d.y - k * 19.84 })) })) : [];
+  const tipo = ((ex.campos && ex.campos.tipo) || tipoPadrao(idx || 0)).slice(0, 12); // editável; padrão ADC-NN (CXNN em obra nova)
+  const lado = sec['LADO DE ABERTURA'], tipoT = sec['TIPO DE TRILHO'] || { x: 18.8, y: lado.y - 61 };
+  const c = ex.campos || {}, esc = ex.escopo || escopo;
+  // máscaras: apaga o texto do orçamento do molde
+  pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
+  const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 71;
+  pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
+  let budgetY = null;
+  if (uT) {
+    // Apaga só o TEXTO do "previsto" do molde (linha logo acima da 1ª linha de medida) e o eco do
+    // tipo nas linhas de medida, com retângulos estreitos POR CÉLULA — sem encostar nas bordas da
+    // tabela (se cobrir as bordas, a grade some e parece "cortado").
+    budgetY = uT.y + 19.8; // altura de linha do modelo FastReport
+    const limpa = (x1, x2, y) => pg.drawRectangle({ x: x1, y: y - 3, width: x2 - x1, height: 11, color: branco });
+    limpa(33, 78, budgetY);                        // TIPO
+    limpa(88, 108, budgetY);                       // QTDE
+    limpa(cols.cmL - 15, cols.cmL + 15, budgetY);  // previsto contramarco L
+    limpa(cols.cmH - 15, cols.cmH + 15, budgetY);  // previsto contramarco H
+    limpa(262, cols.esL - 26, budgetY);            // LOCALIZAÇÃO
+    limpa(cols.esL - 15, cols.esL + 15, budgetY);  // previsto esquadria L
+    limpa(cols.esH - 15, cols.esH + 15, budgetY);  // previsto esquadria H
+    for (const u of linhas) limpa(33, 78, u.y);    // eco do tipo (CXxx) nas linhas de medida
   }
-
-  // true se o desenho à mão está em branco (nenhum traço escuro)
-  async function desenhoVazio(dataUrl) {
+  // rótulo no topo da peça
+  pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
+  pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
+  // croqui: desenho do usuário; sem desenho à mão → "CONFORME PROJETO" em letras grandes
+  if (!ex.base || await desenhoVazio(ex.base)) {
+    const cx = (cqX + cqX1) / 2, cy = (cqYb + cqYt) / 2, tam = 18;
+    centro(pg, 'CONFORME', negrito, tam, cx, cy + 4, preto);
+    centro(pg, 'PROJETO', negrito, tam, cx, cy - tam - 2, preto);
+  } else {
     try {
-      const img = await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = dataUrl; });
-      const cv = document.createElement('canvas'); cv.width = 125; cv.height = 177;
-      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-      cx.drawImage(img, 0, 0, cv.width, cv.height);
-      const d = cx.getImageData(0, 0, cv.width, cv.height).data;
-      for (let i = 0; i < d.length; i += 4) if (d[i] < 200 || d[i + 1] < 200 || d[i + 2] < 200) return false;
-      return true;
-    } catch (e) { return false; }
+      const img = await doc.embedPng(dataUrlParaBytes(ex.base));
+      const maxW = cqX1 - cqX - 4, maxH = cqYt - cqYb - 4;
+      const escI = Math.min(maxW / img.width, maxH / img.height);
+      const w = img.width * escI, h = img.height * escI;
+      pg.drawImage(img, { x: cqX + (maxW - w) / 2 + 2, y: cqYb + (maxH - h) / 2 + 2, width: w, height: h });
+    } catch (e) { log('Croqui do extra: ' + e.message); }
   }
-  // Carimba um item extra no slot (geometria de um item real) de uma página-molde clonada.
-  async function carimbarExtra(pg, slot, ex, idx, n) {
-    const sec = slot.sec, cols = slot.cols;
-    // linhas de medida: uma por unidade, a partir da linha de cima do carimbo, descendo 19,84pt cada
-    const uT = slot.unidades.length ? slot.unidades.reduce((a, u) => (u.y > a.y ? u : a)) : null;
-    const linhas = uT ? Array.from({ length: Math.max(1, n || 1) }, (_, k) => ({ y: uT.y - k * 19.84, datas: uT.datas.map(d => ({ ...d, y: d.y - k * 19.84 })) })) : [];
-    const tipo = ((ex.campos && ex.campos.tipo) || ('ADC-' + String((idx || 0) + 1).padStart(2, '0'))).slice(0, 12); // editável; padrão ADC-NN
-    const lado = sec['LADO DE ABERTURA'], tipoT = sec['TIPO DE TRILHO'] || { x: 18.8, y: lado.y - 61 };
-    const c = ex.campos || {}, esc = ex.escopo || escopo;
-    // máscaras: apaga o texto do orçamento do molde
-    pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
-    const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 71;
-    pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
-    let budgetY = null;
-    if (uT) {
-      // Apaga só o TEXTO do "previsto" do molde (linha logo acima da 1ª linha de medida) e o eco do
-      // tipo nas linhas de medida, com retângulos estreitos POR CÉLULA — sem encostar nas bordas da
-      // tabela (se cobrir as bordas, a grade some e parece "cortado").
-      budgetY = uT.y + 19.8; // altura de linha do modelo FastReport
-      const limpa = (x1, x2, y) => pg.drawRectangle({ x: x1, y: y - 3, width: x2 - x1, height: 11, color: branco });
-      limpa(33, 78, budgetY);                        // TIPO
-      limpa(88, 108, budgetY);                       // QTDE
-      limpa(cols.cmL - 15, cols.cmL + 15, budgetY);  // previsto contramarco L
-      limpa(cols.cmH - 15, cols.cmH + 15, budgetY);  // previsto contramarco H
-      limpa(262, cols.esL - 26, budgetY);            // LOCALIZAÇÃO
-      limpa(cols.esL - 15, cols.esL + 15, budgetY);  // previsto esquadria L
-      limpa(cols.esH - 15, cols.esH + 15, budgetY);  // previsto esquadria H
-      for (const u of linhas) limpa(33, 78, u.y);    // eco do tipo (CXxx) nas linhas de medida
-    }
-    // rótulo no topo da peça
-    pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
-    pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
-    // croqui: desenho do usuário; sem desenho à mão → "CONFORME PROJETO" em letras grandes
-    if (!ex.base || await desenhoVazio(ex.base)) {
-      const cx = (cqX + cqX1) / 2, cy = (cqYb + cqYt) / 2, tam = 18;
-      centro(pg, 'CONFORME', negrito, tam, cx, cy + 4, preto);
-      centro(pg, 'PROJETO', negrito, tam, cx, cy - tam - 2, preto);
-    } else {
-      try {
-        const img = await doc.embedPng(dataUrlParaBytes(ex.base));
-        const maxW = cqX1 - cqX - 4, maxH = cqYt - cqYb - 4;
-        const escI = Math.min(maxW / img.width, maxH / img.height);
-        const w = img.width * escI, h = img.height * escI;
-        pg.drawImage(img, { x: cqX + (maxW - w) / 2 + 2, y: cqYb + (maxH - h) / 2 + 2, width: w, height: h });
-      } catch (e) { log('Croqui do extra: ' + e.message); }
-    }
-    // medidas: repete a coleta em TODAS as linhas (uma por unidade), igual ao padrão do caderno
-    for (const un0 of linhas) {
-      if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.cmL, un0.y, azul);
-      if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.cmH, un0.y, azul);
-      if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.esL, un0.y, azul);
-      if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.esH, un0.y, azul);
-      centro(pg, tipo, fonte, 8, 55.5, un0.y, preto);  // eco do tipo na linha de medida (como no caderno)
-      un0.datas.forEach((d, k) => {
-        const mostra = k === 0 ? (esc === 'cm' || esc === 'ambos') : (esc === 'es' || esc === 'ambos');
-        if (!mostra) return;
-        pg.drawRectangle({ x: d.x - 1, y: d.y - 2, width: d.w + 2, height: d.h + 3, color: branco });
-        centro(pg, hoje, fonte, 7, d.x + d.w / 2, d.y, azul);
-      });
-    }
-    // linha do "previsto" (orçamento): como a peça é nova, repete a medida coletada em PRETO,
-    // no mesmo visual do caderno (tipo, qtde, medidas e localização); a coleta fica embaixo em azul.
-    if (budgetY != null) {
-      centro(pg, tipo, fonte, 8, 55.5, budgetY, preto);
-      if (c.qt) centro(pg, String(c.qt), fonte, 8, 98, budgetY, preto);
-      if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.cmL, budgetY, preto);
-      if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.cmH, budgetY, preto);
-      if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.esL, budgetY, preto);
-      if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.esH, budgetY, preto);
-      if (c.loc) centro(pg, String(c.loc).slice(0, 40), fonte, 7, (262 + cols.esL - 26) / 2, budgetY, preto);
-    }
-    // OBS
-    if (c.obs && slot.obsPos) pg.drawText(String(c.obs).replace(/\s+/g, ' ').slice(0, 95), { x: slot.obsPos.x, y: slot.obsPos.y, size: 8, font: fonte, color: azul });
-    // flags (mesmo esquema dos itens reais); peitoril vem só pelas flags (alvenaria)
-    const f = flags[ex.id] || {};
-    for (const fid of Object.keys(f)) {
-      if (!f[fid]) continue;
-      const fsec = FLAG_SEC[fid]; if (!fsec) continue;
-      const anc = sec[fsec.h]; if (!anc) continue;
-      if (fsec.tipo === 'valor') { const off = ALV_OFF[fid]; if (off) centro(pg, String(f[fid]), negrito, 9, anc.x + off[0], anc.y + off[1], azul); }
-      else { const off = CAIXA_OFF[fid]; if (off) marcarX(pg, anc.x + off[1], anc.y + off[2]); }
-    }
+  // medidas: repete a coleta em TODAS as linhas (uma por unidade), igual ao padrão do caderno
+  for (const un0 of linhas) {
+    if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.cmL, un0.y, azul);
+    if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.cmH, un0.y, azul);
+    if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.esL, un0.y, azul);
+    if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.esH, un0.y, azul);
+    centro(pg, tipo, fonte, 8, 55.5, un0.y, preto);  // eco do tipo na linha de medida (como no caderno)
+    un0.datas.forEach((d, k) => {
+      const mostra = k === 0 ? (esc === 'cm' || esc === 'ambos') : (esc === 'es' || esc === 'ambos');
+      if (!mostra) return;
+      pg.drawRectangle({ x: d.x - 1, y: d.y - 2, width: d.w + 2, height: d.h + 3, color: branco });
+      centro(pg, hoje, fonte, 7, d.x + d.w / 2, d.y, azul);
+    });
   }
+  // linha do "previsto" (orçamento): como a peça é nova, repete a medida coletada em PRETO,
+  // no mesmo visual do caderno (tipo, qtde, medidas e localização); a coleta fica embaixo em azul.
+  if (budgetY != null) {
+    centro(pg, tipo, fonte, 8, 55.5, budgetY, preto);
+    if (c.qt) centro(pg, String(c.qt), fonte, 8, 98, budgetY, preto);
+    if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.cmL, budgetY, preto);
+    if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.cmH, budgetY, preto);
+    if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.esL, budgetY, preto);
+    if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.esH, budgetY, preto);
+    if (c.loc) centro(pg, String(c.loc).slice(0, 40), fonte, 7, (262 + cols.esL - 26) / 2, budgetY, preto);
+  }
+  // OBS
+  if (c.obs && slot.obsPos) pg.drawText(String(c.obs).replace(/\s+/g, ' ').slice(0, 95), { x: slot.obsPos.x, y: slot.obsPos.y, size: 8, font: fonte, color: azul });
+  // flags (mesmo esquema dos itens reais); peitoril vem só pelas flags (alvenaria)
+  const f = flags[ex.id] || {};
+  for (const fid of Object.keys(f)) {
+    if (!f[fid]) continue;
+    const fsec = FLAG_SEC[fid]; if (!fsec) continue;
+    const anc = sec[fsec.h]; if (!anc) continue;
+    if (fsec.tipo === 'valor') { const off = ALV_OFF[fid]; if (off) centro(pg, String(f[fid]), negrito, 9, anc.x + off[0], anc.y + off[1], azul); }
+    else { const off = CAIXA_OFF[fid]; if (off) marcarX(pg, anc.x + off[1], anc.y + off[2]); }
+  }
+}
+
+// Empilha itens no padrão do caderno usando um item real (de 1 unidade) como "carimbo": recorta do PDF
+// (a) o bloco do item até a 1ª linha de medida, (b) a linha de medida e (c) o separador. Cada item sai
+// com UMA LINHA DE MEDIDA POR UNIDADE (qtde 3 = 3 linhas, como o caderno faz); os blocos descem pela
+// página e abrem página nova (novaPagina()) quando não cabem. inicio = { pg, cursor } p/ continuar numa página.
+async function empilharItens(K, srcPg, st, lista, novaPagina, inicio) {
+  const { doc } = K;
+  const ladoY = st.sec['LADO DE ABERTURA'].y;
+  const uT = st.unidades.reduce((a, u) => (u.y > a.y ? u : a)); // linha de medida de cima
+  const PASSO = 19.84, SEP = 16;                 // altura da linha e faixa do separador (FastReport)
+  const topoRel = ladoY + 73, rowB = uT.y - 8.9; // topo do bloco e base da 1ª linha de medida
+  const { width: PW, height: PH } = srcPg.getSize();
+  const pA = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - 1, top: topoRel });
+  const pR = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: uT.y - 9.9, top: uT.y + 12.1 });
+  const pS = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - SEP, top: rowB + 1 });
+  const hBase = topoRel - rowB + SEP, MAXN = Math.max(1, Math.floor((PH - 70 - hBase) / PASSO) + 1);
+  const TOPO = Math.min(PH - 28, topoRel), BASE = 36;
+  // desloca tudo que carimbarExtra desenha em dy (coordenadas do carimbo -> posição na página)
+  const mover = (pg, dy) => ({
+    drawRectangle: o => pg.drawRectangle({ ...o, y: o.y + dy }),
+    drawText: (t, o) => pg.drawText(t, { ...o, y: o.y + dy }),
+    drawImage: (i, o) => pg.drawImage(i, { ...o, y: o.y + dy }),
+    drawLine: o => pg.drawLine({ ...o, start: { x: o.start.x, y: o.start.y + dy }, end: { x: o.end.x, y: o.end.y + dy } })
+  });
+  let pg = inicio ? inicio.pg : null, cursor = inicio ? inicio.cursor : 0;
+  for (let e = 0; e < lista.length; e++) {
+    const ex = lista[e];
+    let n = parseInt(String((ex.campos && ex.campos.qt) || '1').replace(/\D/g, ''), 10) || 1;
+    if (n > MAXN) { log('Item ' + (e + 1) + ': qtde ' + n + ' passa de uma página; saem ' + MAXN + ' linhas.'); n = MAXN; }
+    const h = hBase + (n - 1) * PASSO;
+    if (!pg || cursor - h < BASE) { pg = novaPagina(); cursor = TOPO; }
+    const dy = cursor - topoRel;
+    pg.drawPage(pA, { x: 0, y: rowB - 1 + dy });
+    for (let k = 1; k < n; k++) pg.drawPage(pR, { x: 0, y: uT.y - 9.9 - k * PASSO + dy });
+    pg.drawPage(pS, { x: 0, y: rowB - SEP - (n - 1) * PASSO + dy });
+    await carimbarExtra(K, mover(pg, dy), st, ex, e, n);
+    cursor -= h;
+  }
+  return { pg, cursor, TOPO, BASE };
+}
+
+// Croquis e fotos (anexos) como páginas no fim do caderno.
+async function anexarImagens(doc, fonte, negrito, cinza, base) {
+  const margem = 28, titH = 22;
+  for (let k = 0; k < anexos.length; k++) {
+    const a = anexos[k];
+    let img;
+    try { img = a.tipo === 'foto' ? await doc.embedJpg(dataUrlParaBytes(a.data)) : await doc.embedPng(dataUrlParaBytes(a.data)); }
+    catch (e) { try { img = await doc.embedPng(dataUrlParaBytes(a.data)); } catch (e2) { log('Anexo ' + (k + 1) + ': ' + e2.message); continue; } }
+    const pg = doc.addPage([base.width, base.height]);
+    const maxW = base.width - margem * 2, maxH = base.height - margem * 2 - titH;
+    const esc = Math.min(maxW / img.width, maxH / img.height);
+    const w = img.width * esc, h = img.height * esc;
+    pg.drawText((a.tipo === 'foto' ? 'Croqui / foto ' : 'Desenho ') + (k + 1), { x: margem, y: base.height - margem - 12, size: 12, font: negrito, color: cinza });
+    pg.drawImage(img, { x: (base.width - w) / 2, y: base.height - margem - titH - h, width: w, height: h });
+  }
+}
+// Tipo sugerido do item: ADC-01, ADC-02… nos extras de um caderno; CX01, CX02… numa obra nova.
+function tipoPadrao(k) { return (obra.nova ? 'CX' : 'ADC-') + String(k + 1).padStart(2, '0'); }
+
+
+// ---------- Medição de nova obra (caderno do zero) ----------
+// Os dados digitados viram a capa e o cabeçalho; cada esquadria é um "item" no mesmo quadro do caderno
+// (mesmo editor dos itens extras). O layout vem do último caderno ORIGINAL aberto neste aparelho, limpo
+// de qualquer dado do cliente dele.
+const NOVA_CAMPOS = [
+  ['cliente', 'Cliente *', 'full'], ['obra', 'Obra', 'full'], ['os', 'O.S. / nº da obra *'], ['tel', 'Telefone'],
+  ['end', 'Endereço', 'full'], ['bairro', 'Bairro'], ['compl', 'Complemento'], ['cidade', 'Cidade'], ['uf', 'UF'],
+  ['vendedor', 'Vendedor'], ['emitido', 'Emitido por'], ['trat', 'Tratamento / cor', 'full']
+];
+let novaEditando = null; // obra nova em edição (dados) ou null para uma nova
+function listaNovas() { return lerJson('novas_obras') || []; }
+function abrirNovaObra(edit) {
+  novaEditando = edit && edit.nova ? edit : null;
+  const l = listaNovas();
+  $('novaLista').innerHTML = (!novaEditando && l.length) ? '<div class="tit">Continuar uma obra nova</div>' + l.map((o, k) =>
+    `<div class="novaItem"><button class="cl" data-cont="${k}">${licEsc(o.os)} · ${licEsc(o.cliente || '')}</button><button class="sec" data-del="${k}" title="Apagar">✕</button></div>`).join('') + '<div style="height:6px"></div>' : '';
+  $('novaLista').querySelectorAll('[data-cont]').forEach(b => b.onclick = () => iniciarNovaObra(listaNovas()[+b.dataset.cont]));
+  $('novaLista').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    const o = listaNovas()[+b.dataset.del]; if (!o) return;
+    if (!confirm('Apagar a obra nova ' + o.os + ' (medidas, desenhos e flags) deste celular?')) return;
+    try { localStorage.removeItem('medicao_nova_' + o.os); } catch (e) { }
+    gravarJson('novas_obras', listaNovas().filter(x => x.os !== o.os)); abrirNovaObra();
+  });
+  const v = novaEditando || { emitido: lerJson('nova_emitido') || '', os: 'N' + String(l.length + 1).padStart(3, '0') };
+  $('novaFormTit').textContent = novaEditando ? 'Editar dados da obra' : 'Dados do cliente e da obra';
+  $('novaOk').textContent = novaEditando ? 'Salvar dados' : 'Começar a medição ▶';
+  $('novaForm').innerHTML = NOVA_CAMPOS.map(([id, rot, cl]) =>
+    `<label class="${cl || ''}">${rot}<input id="nv_${id}" value="${licEsc(v[id] || '')}" autocomplete="off"${id === 'uf' ? ' maxlength="2"' : ''}></label>`).join('');
+  $('novaMsg').textContent = '';
+  $('nova').style.display = 'flex';
+}
+$('btnNovaObra').onclick = () => abrirNovaObra();
+$('novaFechar').onclick = () => { $('nova').style.display = 'none'; };
+$('novaOk').onclick = () => {
+  const d = {};
+  NOVA_CAMPOS.forEach(([id]) => d[id] = $('nv_' + id).value.trim().toUpperCase());
+  d.os = d.os.replace(/[^\wÀ-ÿ.\-]/g, '');
+  if (!d.cliente || !d.os) { $('novaMsg').textContent = 'Preencha pelo menos o Cliente e a O.S.'; return; }
+  const antiga = novaEditando;
+  if (!antiga && listaNovas().some(o => o.os === d.os)) { $('novaMsg').textContent = 'Já existe uma obra nova com a O.S. ' + d.os + '. Use outro número ou continue a existente acima.'; return; }
+  if (d.emitido) gravarJson('nova_emitido', d.emitido);
+  if (antiga && antiga.os !== d.os) { // trocou a O.S.: leva os dados para a chave nova
+    try { const v = localStorage.getItem('medicao_nova_' + antiga.os); if (v) localStorage.setItem('medicao_nova_' + d.os, v); localStorage.removeItem('medicao_nova_' + antiga.os); } catch (e) { }
+    gravarJson('novas_obras', listaNovas().filter(x => x.os !== antiga.os));
+  }
+  iniciarNovaObra(d);
+};
+function iniciarNovaObra(d) {
+  obra = Object.assign({}, d, { nova: true });
+  nomeArquivo = (d.os + ' ' + (d.cliente || '')).trim();
+  pdfBytes = null; pdfDoc = null; croquiCache = {}; itens = []; assinatura = null;
+  medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; extras = []; ativo = null;
+  carregarSalvo();
+  const l = listaNovas().filter(o => o.os !== d.os); l.unshift(Object.assign({}, d, { em: Date.now() })); gravarJson('novas_obras', l);
+  salvar();
+  $('nova').style.display = 'none'; $('barra').style.display = 'none';
+  desenharTudo();
+  status('Obra nova ' + d.os + ': escolha o que vai medir e inclua cada esquadria.');
+  $('obra').scrollIntoView({ block: 'start' });
+}
+
+// O modelo de layout: o último caderno original aberto (ou qualquer um guardado neste aparelho).
+async function acharMolde() {
+  const m = await idbGet('molde_ultimo');
+  if (m && m.bytes) return m;
+  try {
+    const db = await idbDB();
+    const achados = await new Promise((res, rej) => {
+      const out = [], rq = db.transaction('cadernos').objectStore('cadernos').openCursor();
+      rq.onsuccess = () => { const c = rq.result; if (!c) return res(out); if (String(c.key).startsWith('tpl_') && c.value && c.value.bytes) out.push(c.value); c.continue(); };
+      rq.onerror = () => rej(rq.error);
+    });
+    return achados[achados.length - 1] || null;
+  } catch (e) { return null; }
+}
+
+// Bytes <-> texto "binário" (1 byte = 1 caractere), p/ editar o conteúdo das páginas do PDF.
+function binStr(b) { let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return s; }
+function strBin(s) { const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 255; return a; }
+// Tira DE VERDADE (do conteúdo, não só tapa de branco) os textos e imagens que os filtros mandarem.
+// Devolve os textos tirados ({x,y,tam,cor}) para carimbar os novos no mesmo lugar e estilo.
+function limparPagina(doc, page, tiraTexto, tiraImagem) {
+  const { PDFName, PDFArray, PDFRawStream, PDFDict, decodePDFRawStream, rgb } = PDFLib;
+  const ctx = doc.context;
+  const c = page.node.get(PDFName.of('Contents'));
+  if (!c) return [];
+  const partes = c instanceof PDFArray ? c.asArray() : [c];
+  let s = '';
+  for (const r of partes) { const st = ctx.lookup(r); s += binStr(st instanceof PDFRawStream ? decodePDFRawStream(st).decode() : st.getContents()) + '\n'; }
+  const tirados = [];
+  s = s.replace(/\bBT\b[\s\S]*?\bET\b/g, bloco => {
+    let m = bloco.match(/(-?[\d.]+)\s+(-?[\d.]+)\s+Td/);
+    if (!m) m = bloco.match(/(-?[\d.]+)\s+(-?[\d.]+)\s+Tm/);
+    if (!m) return bloco;
+    const x = +m[1], y = +m[2];
+    if (!tiraTexto(x, y)) return bloco;
+    const tf = bloco.match(/([\d.]+)\s+Tf/), cor = bloco.match(/([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg/);
+    tirados.push({ x, y, tam: tf ? +tf[1] : 8, cor: cor ? rgb(+cor[1], +cor[2], +cor[3]) : rgb(0, 0, 0) });
+    return '';
+  });
+  if (tiraImagem) s = s.replace(/q\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+cm\s+\/([^\s\/\[\]<>()]+)\s+Do\s+Q/g,
+    (b, a1, b1, c1, d1, e1, f1) => tiraImagem(+e1, +f1, +a1, +d1) ? '' : b);
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.flateStream(strBin(s))));
+  // imagens que ninguém mais usa saem também dos recursos (senão continuariam dentro do arquivo)
+  const res = page.node.get(PDFName.of('Resources'));
+  const resD = res && ctx.lookup(res);
+  const xo = resD instanceof PDFDict ? resD.lookup(PDFName.of('XObject')) : null;
+  if (xo instanceof PDFDict) for (const k of xo.keys()) { const nome = k.asString().slice(1); if (!s.includes('/' + nome + ' ')) xo.delete(k); }
+  return tirados;
+}
+
+async function gerarCadernoNovo() {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  if (!extras.length) throw new Error('Inclua pelo menos uma esquadria antes de gerar o caderno.');
+  const mol = await acharMolde();
+  if (!mol) throw new Error('Para montar o caderno do zero, abra uma vez neste aparelho qualquer caderno ORIGINAL: ele serve de modelo do layout (capa, cabeçalho e quadros).');
+  const mB = mol.bytes instanceof Uint8Array ? mol.bytes : new Uint8Array(mol.bytes);
+  const est = await lerEstrutura(mB);
+  const molde = escolherMolde(est.itens);
+  if (!molde) throw new Error('O caderno-modelo guardado não tem esquadrias reconhecíveis. Abra outro caderno original e tente de novo.');
+  const T = est.textos, nPag = T.length;
+  const it0 = est.itens.reduce((a, b) => (b.pagina < a.pagina || (b.pagina === a.pagina && b.sec['LADO DE ABERTURA'].y > a.sec['LADO DE ABERTURA'].y) ? b : a));
+  const hp = it0.pagina, it0top = it0.sec['LADO DE ABERTURA'].y + 73;     // página e base do cabeçalho da obra
+  const sp = molde.pagina, st = molde.slot;
+  const ap = est.assinatura ? est.assinatura.pagina : null, yA = est.assinatura ? est.assinatura.y : 0;
+  const ROT = ['CLIENTE:', 'OBRA:', 'O.S.:', 'ENDEREÇO:', 'CIDADE:', 'VENDEDOR:', 'CONST.:', 'TEL.:', 'TRAT.:', 'BAIRRO:', 'UF:', 'COMPL.:', 'EMITIDO POR:'];
+  const ehNumPag = s => /^\d+\s*\/\s*\d+$/.test(s);
+  // o x do pdf.js pula espaços do começo do texto; no conteúdo o texto pode começar uns pontos antes
+  const perto = (lista, x, y) => lista.some(t => Math.abs(t.y - y) < 0.8 && x > t.x - 10 && x < t.x + 0.8);
+  const valoresDe = lista => {
+    const rots = lista.filter(t => ROT.includes(t.s));
+    // faixa do valor de cada rótulo: do fim do rótulo até o próximo rótulo da linha (pega também a 2ª linha de um valor quebrado)
+    const faixas = rots.map(r => { const prox = rots.filter(t => Math.abs(t.y - r.y) < 2 && t.x > r.x + 1).sort((a, b) => a.x - b.x)[0];
+      return { y0: r.y - 10, y1: r.y + 1.5, x0: r.x + r.w - 1, x1: prox ? prox.x - 1 : 9999 }; });
+    return { rots, faixas, vals: lista.filter(t => !ROT.includes(t.s) && rots.some(r => Math.abs(r.y - t.y) < 2 && t.x > r.x)) };
+  };
+  const naFaixa = (lv, x, y) => perto(lv.vals, x, y) || lv.faixas.some(f => y > f.y0 && y < f.y1 && x > f.x0 && x < f.x1);
+  // um documento por papel (capa, cabeçalho, carimbo, assinatura, finais): cada um é limpo do seu jeito
+  const carregar = () => PDFDocument.load(mB);
+  const [dCapa, dCab, dCar, dAss, dFim] = await Promise.all([carregar(), carregar(), carregar(), carregar(), carregar()]);
+  // capa
+  const capaV = valoresDe(T[0]);
+  const capaTir = limparPagina(dCapa, dCapa.getPage(0), (x, y) => naFaixa(capaV, x, y) || perto(T[0].filter(t => ehNumPag(t.s)), x, y));
+  // cabeçalho da obra: fica só o que está acima do 1º item (rótulos sem valor); o resto da página sai
+  const cabT = T[hp].filter(t => t.y > it0top), cabV = valoresDe(cabT);
+  const cabTir = limparPagina(dCab, dCab.getPage(hp), (x, y) => y <= it0top || naFaixa(cabV, x, y), (e, f) => f < it0top);
+  // carimbo do quadro: tira descrição, croqui, valores da tabela e tudo que estiver fora do bloco do item
+  const lado = st.sec['LADO DE ABERTURA'], uT = st.unidades.reduce((a, u) => (u.y > a.y ? u : a)), uB = st.unidades.reduce((a, u) => (u.y < a.y ? u : a));
+  const topoB = lado.y + 73, baseB = uB.y - 8.9 - 16, budgetY = uT.y + 19.8;
+  const carT = T[sp].filter(t => t.y > topoB || t.y < baseB ||
+    (t.x > 165 && t.y > lado.y + 11 && t.y < topoB) ||
+    (t.y < budgetY + 6 && t.y > uB.y - 9 && !ehData(t.s)));
+  limparPagina(dCar, dCar.getPage(sp), (x, y) => perto(carT, x, y), (e, f) => e < lado.x - 4 || f > topoB || f < baseB);
+  // assinatura: só a faixa dela
+  if (ap != null) limparPagina(dAss, dAss.getPage(ap), (x, y) => y > yA + 70 || y < yA - 20, (e, f) => f > yA + 70 || f < yA - 20);
+  // páginas finais (informações complementares / anotações): só o número da página sai
+  const finais = []; for (let p = (ap != null ? ap + 1 : nPag); p < nPag; p++) finais.push(p);
+  finais.forEach(p => limparPagina(dFim, dFim.getPage(p), (x, y) => perto(T[p].filter(t => ehNumPag(t.s)), x, y)));
+
+  const out = await PDFDocument.create();
+  const fonte = await out.embedFont(StandardFonts.Helvetica), negrito = await out.embedFont(StandardFonts.HelveticaBold);
+  const azul = rgb(0.05, 0.25, 0.75), cinza = rgb(0.35, 0.35, 0.35), branco = rgb(1, 1, 1), preto = rgb(0, 0, 0);
+  const agora = new Date(), hoje = agora.toLocaleDateString('pt-BR'), hora = agora.toTimeString().slice(0, 5);
+  const centro = (pg, txt, f, tam, cx, y, cor) => pg.drawText(txt, { x: cx - f.widthOfTextAtSize(txt, tam) / 2, y, size: tam, font: f, color: cor });
+  const marcarX = (pg, cx, cy) => { const r = 3.6;
+    pg.drawLine({ start: { x: cx - r, y: cy - r }, end: { x: cx + r, y: cy + r }, thickness: 1.4, color: azul });
+    pg.drawLine({ start: { x: cx - r, y: cy + r }, end: { x: cx + r, y: cy - r }, thickness: 1.4, color: azul }); };
+  const K = { doc: out, fonte, negrito, azul, branco, preto, hoje, centro, marcarX };
+  const { width: PW, height: PH } = dCar.getPage(sp).getSize();
+  const o = obra, junta = (...a) => a.filter(Boolean).join(', ');
+  // escreve o valor depois do rótulo, no lugar/estilo do valor original (encolhe se não couber)
+  const escrever = (pg, lista, tirados, rot, valor, limiteDir) => {
+    const r = lista.rots.find(t => t.s === rot); if (!r || !valor) return;
+    const mesmaLinha = lista.rots.filter(t => Math.abs(t.y - r.y) < 2 && t.x > r.x + 1).sort((a, b) => a.x - b.x)[0];
+    const orig = tirados.filter(t => Math.abs(t.y - r.y) < 2 && t.x > r.x).sort((a, b) => a.x - b.x)[0];
+    const x = orig ? orig.x : r.x + r.w + 3, dir = (mesmaLinha ? mesmaLinha.x : limiteDir) - 4;
+    let tam = orig ? orig.tam : r.tam;
+    let txt = (x - (r.x + r.w) < 1 ? ' ' : '') + String(valor); // valor colado no rótulo: começa com espaço (como o original)
+    while (tam > 5 && fonte.widthOfTextAtSize(txt, tam) > dir - x) tam -= 0.25;
+    while (txt.length > 1 && fonte.widthOfTextAtSize(txt, tam) > dir - x) txt = txt.slice(0, -1);
+    pg.drawText(txt, { x, y: r.y, size: tam, font: fonte, color: orig ? orig.cor : preto });
+  };
+  // 1) capa
+  const [capa] = await out.copyPages(dCapa, [0]); out.addPage(capa);
+  const capaVals = { 'CLIENTE:': o.cliente, 'OBRA:': o.obra || o.cliente, 'O.S.:': o.os, 'ENDEREÇO:': junta(o.end, o.compl, o.bairro), 'CIDADE:': [o.cidade, o.uf].filter(Boolean).join(' - '), 'VENDEDOR:': o.vendedor };
+  for (const rot in capaVals) escrever(capa, capaV, capaTir, rot, capaVals[rot], PW - 40);
+  // 2) cabeçalho da obra (1ª página de itens)
+  let pg = out.addPage([PW, PH]);
+  pg.drawPage(await out.embedPage(dCab.getPage(hp), { left: 0, right: PW, bottom: it0top, top: PH }), { x: 0, y: it0top });
+  const cabVals = { 'CONST.:': o.cliente, 'OBRA:': o.obra || o.cliente, 'BAIRRO:': o.bairro, 'ENDEREÇO:': o.end, 'O.S.:': o.os, 'TEL.:': o.tel, 'CIDADE:': o.cidade, 'VENDEDOR:': o.vendedor, 'TRAT.:': o.trat, 'UF:': o.uf, 'COMPL.:': o.compl };
+  for (const rot in cabVals) escrever(pg, cabV, cabTir, rot, cabVals[rot], PW - 4);
+  const em = cabV.rots.find(t => t.s === 'EMITIDO POR:');
+  if (em) { // EMITIDO POR: <quem>  ...  <data>  <hora>
+    const lin = cabTir.filter(t => Math.abs(t.y - em.y) < 2 && t.x > em.x).sort((a, b) => a.x - b.x);
+    const tam = lin[0] ? lin[0].tam : em.tam, cor = lin[0] ? lin[0].cor : preto;
+    if (o.emitido) pg.drawText(o.emitido, { x: lin[0] ? lin[0].x : em.x + em.w + 18, y: em.y, size: tam, font: fonte, color: cor });
+    if (lin[1]) pg.drawText(hoje, { x: lin[1].x, y: em.y, size: lin[1].tam, font: fonte, color: lin[1].cor });
+    if (lin[2]) pg.drawText(hora, { x: lin[2].x, y: em.y, size: lin[2].tam, font: fonte, color: lin[2].cor });
+  }
+  // 3) as esquadrias, no quadro do caderno, uma linha de medida por unidade
+  const fim = await empilharItens(K, dCar.getPage(sp), st, extras, () => out.addPage([PW, PH]), { pg, cursor: it0top });
+  // 4) assinatura logo depois do último item (ou numa página nova, se não couber)
+  if (ap != null) {
+    let { pg: pa, cursor } = fim;
+    if (cursor - 12 - 90 < fim.BASE) { pa = out.addPage([PW, PH]); cursor = fim.TOPO; }
+    const yTop = cursor - 24;
+    pa.drawPage(await out.embedPage(dAss.getPage(ap), { left: 0, right: PW, bottom: yA - 20, top: yA + 70 }), { x: 0, y: yTop - 90 });
+  }
+  // 5) páginas finais do modelo (informações complementares, anotações)
+  if (finais.length) (await out.copyPages(dFim, finais)).forEach(p => out.addPage(p));
+  // 6) croquis e fotos
+  await anexarImagens(out, fonte, negrito, cinza, { width: PW, height: PH });
+  // 7) numeração "N / total" no mesmo lugar e estilo do caderno (a capa não tem número)
+  let np = null; for (const l of T) { np = l.find(t => ehNumPag(t.s)); if (np) break; }
+  const total = out.getPageCount();
+  out.getPages().forEach((p, i) => {
+    if (!i || !np) return;
+    const txt = i + ' / ' + total, tam = np.tam;
+    p.drawText(txt, { x: np.x + np.w - fonte.widthOfTextAtSize(txt, tam), y: np.y, size: tam, font: fonte, color: preto });
+  });
+  out.setTitle('Caderno de medição - ' + o.os + ' - ' + o.cliente);
+  return await out.save();
 }
 
 $('btnGerar').onclick = async () => {
@@ -1757,6 +2049,15 @@ $('btnGerar').onclick = async () => {
     // Nome = caderno + etapa: "<caderno> - CONTRAMARCO ETAPA 01.pdf" / "... ESQUADRIAS ETAPA 02.pdf".
     // Sugere o próximo número (por tipo e por O.S.), mas deixa você mudar na hora.
     const base = (nomeArquivo || 'caderno').replace(/\.pdf$/i, '');
+    if (obra.nova) { // caderno do zero: gera o caderno completo (capa, cabeçalho, quadros, assinatura)
+      status('Montando o caderno da obra nova...');
+      const nomeN = `${base} - CADERNO DE MEDIÇÃO.pdf`;
+      const arqN = new File([await gerarCadernoNovo()], nomeN, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [arqN] })) await navigator.share({ files: [arqN], title: nomeN });
+      else { const a = document.createElement('a'); a.href = URL.createObjectURL(arqN); a.download = nomeN; a.click(); }
+      status('Caderno gerado: ' + nomeN);
+      return;
+    }
     const label = escopo === 'cm' ? 'CONTRAMARCO' : escopo === 'es' ? 'ESQUADRIAS' : 'MEDIÇÃO';
     const ekey = 'etapa_' + (obra.os || nomeArquivo) + '_' + (escopo || 'ambos');
     const sugerido = (lerJson(ekey) || 0) + 1;
