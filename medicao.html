@@ -43,6 +43,12 @@
   .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .botoes button { min-height: 56px; font-size: 15px; box-shadow: var(--shadow); }
   .botoes .novaBtn { grid-column: 1 / -1; background: linear-gradient(135deg, #059669, #0d9488); }
+  #dlg { position: fixed; inset: 0; background: rgba(17,24,39,.55); z-index: 80; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .dlgCard { background: #fff; border-radius: 18px; padding: 20px 18px 16px; width: 100%; max-width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+  #dlgTit { font-size: 17px; font-weight: 800; margin-bottom: 6px; color: var(--brand-ink); }
+  #dlgTxt { font-size: 14px; color: #374151; white-space: pre-wrap; word-break: break-word; }
+  #dlgInput { display: none; width: 100%; box-sizing: border-box; font-size: 18px; padding: 10px 12px; border: 1.5px solid var(--line2); border-radius: 10px; margin-top: 12px; }
+  #dlgSim.perigo { background: var(--danger); }
   #pronto { position: fixed; inset: 0; background: rgba(17,24,39,.55); z-index: 70; display: none; align-items: center; justify-content: center; padding: 20px; }
   .prontoCard { background: #fff; border-radius: 18px; padding: 22px 18px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
   #nova { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
@@ -361,6 +367,19 @@
   </div>
 </div>
 
+<!-- Janela de pergunta/aviso do próprio app (no lugar das caixas do Chrome) -->
+<div id="dlg">
+  <div class="dlgCard">
+    <div id="dlgTit"></div>
+    <div id="dlgTxt"></div>
+    <input id="dlgInput" autocomplete="off">
+    <div class="linha" style="margin:14px 0 0">
+      <button id="dlgNao" class="sec">Cancelar</button>
+      <button id="dlgSim" class="ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- PDF pronto (quando o Android não abre o compartilhar sozinho) -->
 <div id="pronto">
   <div class="prontoCard">
@@ -427,6 +446,26 @@ function log(t) { $('log').textContent = t + '\n' + $('log').textContent; }
 // Registro mais limpo para a conexão da trena: esconde os códigos técnicos de rotina.
 function logTuya(t) { if (/^Tuya: recebido código|^Tuya DP:|^Tuya: protocolo/.test(t)) return; log(t); }
 function status(t) { $('status').textContent = t; }
+// Pergunta/aviso dentro do app (as caixas nativas do Chrome mostram "impedir caixas de diálogo" e podem ser bloqueadas).
+// tipo: 'confirmar' -> true/false; 'pedir' -> texto ou null; 'avisar' -> true.
+function dialogo({ titulo = '', texto = '', tipo = 'confirmar', valor = '', ok = 'OK', cancelar = 'Cancelar', perigo = false, numerico = false } = {}) {
+  return new Promise(res => {
+    const inp = $('dlgInput');
+    $('dlgTit').textContent = titulo; $('dlgTit').style.display = titulo ? 'block' : 'none';
+    $('dlgTxt').textContent = texto;
+    inp.style.display = tipo === 'pedir' ? 'block' : 'none'; inp.value = valor;
+    inp.inputMode = numerico ? 'numeric' : 'text';
+    $('dlgSim').textContent = ok; $('dlgSim').classList.toggle('perigo', !!perigo);
+    $('dlgNao').textContent = cancelar; $('dlgNao').style.display = tipo === 'avisar' ? 'none' : '';
+    const fim = v => { $('dlg').style.display = 'none'; inp.onkeydown = null; res(v); };
+    $('dlgSim').onclick = () => fim(tipo === 'pedir' ? inp.value : true);
+    $('dlgNao').onclick = () => fim(tipo === 'pedir' ? null : false);
+    inp.onkeydown = e => { if (e.key === 'Enter') $('dlgSim').click(); };
+    $('dlg').style.display = 'flex';
+    if (tipo === 'pedir') setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  });
+}
+const confirmar = (texto, ok = 'Sim', perigo = true) => dialogo({ texto, ok, cancelar: 'Não', perigo });
 
 // ---------- Licença (liberação por período) ----------
 // Bloqueio por chave assinada. Enquanto LIC_EXIGIR = false, o app abre normal (fase de testes).
@@ -930,8 +969,8 @@ $('btnDesfazer').onclick = () => {
   const lista = medidas[chave(ativo.i, ativo.u, ativo.c)];
   if (lista && lista.length) { lista.pop(); salvar(); desenharCampo(ativo.i, ativo.u, ativo.c); desenharBarra(); }
 };
-$('btnDigitar').onclick = () => {
-  const v = prompt('Medida em mm:');
+$('btnDigitar').onclick = async () => {
+  const v = await dialogo({ tipo: 'pedir', titulo: 'Digitar medida', texto: 'Medida em mm:', numerico: true });
   const mm = v ? parseInt(v.replace(/\D/g, ''), 10) : NaN;
   if (mm > 0) adicionarMedida(mm);
 };
@@ -940,8 +979,8 @@ $('arquivo').onchange = e => { if (e.target.files[0]) abrirPdf(e.target.files[0]
 $('btnReordenar').onclick = () => { ordemIds = itens.map(it => it.id); abrirOrdenacao(); };
 $('btnOpcoes').onclick = () => { $('opcoes').style.display = 'flex'; };
 $('opcoesFechar').onclick = () => { $('opcoes').style.display = 'none'; };
-$('btnZerar').onclick = () => {
-  if (!confirm('Apagar todas as medidas, flags, observações, anexos e itens extras desta obra neste celular?')) return;
+$('btnZerar').onclick = async () => {
+  if (!await confirmar('Apagar todas as medidas, flags, observações, anexos e itens extras desta obra neste celular?', 'Apagar')) return;
   medidas = {}; obs = {}; flags = {}; anexos = []; extras = []; salvar(); $('opcoes').style.display = 'none'; desenharTudo();
 };
 $('escopoBar').querySelectorAll('button').forEach(b => b.onclick = () => {
@@ -1608,9 +1647,9 @@ function desenharExtras() {
   });
   g.querySelectorAll('[data-edt]').forEach(el => el.onclick = () => abrirExtraDesenho(extras[+el.dataset.edt]));
   g.querySelectorAll('[data-flg]').forEach(el => el.onclick = () => abrirWizardExtra(extras[+el.dataset.flg]));
-  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => {
+  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = async () => {
     const k = +el.dataset.rem, ex = extras[k];
-    if (!confirm(obra.nova ? 'Remover esta esquadria?' : 'Remover este item extra?')) return;
+    if (!await confirmar(obra.nova ? 'Remover esta esquadria?' : 'Remover este item extra?', 'Remover')) return;
     if (ex) delete flags[ex.id];
     extras.splice(k, 1); salvar(); desenharExtras();
   });
@@ -1646,9 +1685,9 @@ function desenharCartoesObra(g) {
   g.querySelectorAll('[data-desce]').forEach(el => el.onclick = () => mover(+el.dataset.desce, 1));
   g.querySelectorAll('[data-edt]').forEach(el => el.onclick = () => abrirExtraDesenho(extras[+el.dataset.edt]));
   g.querySelectorAll('[data-flg]').forEach(el => el.onclick = () => abrirWizardExtra(extras[+el.dataset.flg]));
-  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = () => {
+  g.querySelectorAll('[data-rem]').forEach(el => el.onclick = async () => {
     const k = +el.dataset.rem, ex = extras[k];
-    if (!confirm('Remover esta esquadria?')) return;
+    if (!await confirmar('Remover esta esquadria?', 'Remover')) return;
     if (ex) delete flags[ex.id];
     extras.splice(k, 1); salvar(); desenharTudo();
   });
@@ -1982,9 +2021,9 @@ function abrirNovaObra(edit) {
   $('novaLista').innerHTML = (!novaEditando && l.length) ? '<div class="tit">Continuar uma obra nova</div>' + l.map((o, k) =>
     `<div class="novaItem"><button class="cl" data-cont="${k}">${licEsc(o.os)} · ${licEsc(o.cliente || '')}</button><button class="sec" data-del="${k}" title="Apagar">✕</button></div>`).join('') + '<div style="height:6px"></div>' : '';
   $('novaLista').querySelectorAll('[data-cont]').forEach(b => b.onclick = () => iniciarNovaObra(listaNovas()[+b.dataset.cont]));
-  $('novaLista').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+  $('novaLista').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     const o = listaNovas()[+b.dataset.del]; if (!o) return;
-    if (!confirm('Apagar a obra nova ' + o.os + ' (medidas, desenhos e flags) deste celular?')) return;
+    if (!await confirmar('Apagar a obra nova ' + o.os + ' (medidas, desenhos e flags) deste celular?', 'Apagar')) return;
     try { localStorage.removeItem('medicao_nova_' + o.os); } catch (e) { }
     gravarJson('novas_obras', listaNovas().filter(x => x.os !== o.os)); abrirNovaObra();
   });
@@ -2217,7 +2256,7 @@ async function entregarArquivo(arq) {
 function erroGerar(e) {
   if (e && e.name === 'AbortError') return;
   status('Erro ao gerar o PDF: ' + e.message); log(e.stack || String(e));
-  alert('Não foi possível gerar o PDF:\n\n' + e.message);
+  dialogo({ tipo: 'avisar', titulo: 'Não foi possível gerar o PDF', texto: e.message });
 }
 
 $('btnGerar').onclick = async () => {
@@ -2236,7 +2275,7 @@ $('btnGerar').onclick = async () => {
       const label = escopo === 'cm' ? 'CONTRAMARCO' : escopo === 'es' ? 'ESQUADRIAS' : 'MEDIÇÃO';
       const ekey = 'etapa_' + (obra.os || nomeArquivo) + '_' + (escopo || 'ambos');
       const sugerido = (lerJson(ekey) || 0) + 1;
-      const resp = prompt('Número da etapa (' + label + '):', String(sugerido));
+      const resp = await dialogo({ tipo: 'pedir', titulo: 'Gerar PDF', texto: 'Número da etapa (' + label + '):', valor: String(sugerido), ok: 'Gerar', numerico: true });
       if (resp === null) { status('Geração cancelada.'); return; }
       let n = parseInt(String(resp).replace(/\D/g, ''), 10);
       if (!(n > 0)) n = sugerido;
