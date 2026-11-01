@@ -1667,7 +1667,7 @@ async function gerarPdf() {
     const c = ex.campos || {}, esc = ex.escopo || escopo;
     // máscaras: apaga o texto do orçamento do molde
     pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
-    const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 92;
+    const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 71;
     pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
     let budgetY = null;
     if (slot.unidades.length) {
@@ -1678,10 +1678,10 @@ async function gerarPdf() {
       budgetY = Math.max(...uys) + 19.8; // altura de linha do modelo FastReport
       const limpa = (x1, x2, y) => pg.drawRectangle({ x: x1, y: y - 3, width: x2 - x1, height: 11, color: branco });
       limpa(33, 78, budgetY);                        // TIPO
-      limpa(83, 113, budgetY);                       // QTDE
+      limpa(88, 108, budgetY);                       // QTDE
       limpa(cols.cmL - 15, cols.cmL + 15, budgetY);  // previsto contramarco L
       limpa(cols.cmH - 15, cols.cmH + 15, budgetY);  // previsto contramarco H
-      limpa(259, cols.esL - 20, budgetY);            // LOCALIZAÇÃO
+      limpa(262, cols.esL - 26, budgetY);            // LOCALIZAÇÃO
       limpa(cols.esL - 15, cols.esL + 15, budgetY);  // previsto esquadria L
       limpa(cols.esH - 15, cols.esH + 15, budgetY);  // previsto esquadria H
       for (const u of uys) limpa(33, 78, u);         // eco do tipo (CXxx) nas linhas de medida
@@ -1727,7 +1727,7 @@ async function gerarPdf() {
       if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.cmH, budgetY, preto);
       if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.esL, budgetY, preto);
       if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.esH, budgetY, preto);
-      if (c.loc) centro(pg, String(c.loc).slice(0, 40), fonte, 7, (259 + cols.esL - 20) / 2, budgetY, preto);
+      if (c.loc) centro(pg, String(c.loc).slice(0, 40), fonte, 7, (262 + cols.esL - 26) / 2, budgetY, preto);
     }
     // OBS
     if (c.obs && slot.obsPos) pg.drawText(String(c.obs).replace(/\s+/g, ' ').slice(0, 95), { x: slot.obsPos.x, y: slot.obsPos.y, size: 8, font: fonte, color: azul });
