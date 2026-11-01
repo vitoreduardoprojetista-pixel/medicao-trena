@@ -1586,35 +1586,47 @@ async function gerarPdf() {
     }
   }
 
-  // 5) itens extras no formato do caderno: clona uma página-molde EM BRANCO, apaga o texto
-  //    do orçamento do molde e carimba o item extra (croqui, flags e medidas no lugar certo).
+  // 5) itens extras no formato do caderno. Usa um item real de 1 unidade como "carimbo": recorta do
+  //    PDF em branco (a) o bloco do item até a 1ª linha de medida, (b) a linha de medida e (c) o
+  //    separador. Monta cada extra com UMA LINHA DE MEDIDA POR UNIDADE (qtde 3 = 3 linhas, como o
+  //    caderno faz), empilhando os blocos de cima pra baixo e abrindo página nova quando não cabe.
   if (extras.length) {
     const molde = escolherMolde();
     if (molde) {
       const moldeDoc = await PDFDocument.load(pdfBytes); // molde pristino (sem as medidas já desenhadas)
-      const slots = molde.slots;
-      const porPag = Math.max(1, slots.length);
-      // tapa um slot inteiro (quando a página-molde tem um slot sobrando sem item extra)
-      const taparSlot = (pg, slot) => {
-        const lado = slot.sec['LADO DE ABERTURA']; if (!lado) return;
-        const yBaixo = (slot.unidades.length ? Math.min(...slot.unidades.map(u => u.y)) : lado.y - 160) - 24;
-        pg.drawRectangle({ x: 8, y: yBaixo, width: 579, height: (lado.y + 95) - yBaixo, color: branco });
-      };
+      const st = molde.slot, ladoY = st.sec['LADO DE ABERTURA'].y;
+      const uT = st.unidades.reduce((a, u) => (u.y > a.y ? u : a)); // linha de medida de cima
+      const PASSO = 19.84, SEP = 16;                 // altura da linha e faixa do separador (FastReport)
+      const topoRel = ladoY + 73, rowB = uT.y - 8.9; // topo do bloco e base da 1ª linha de medida
+      const srcPg = moldeDoc.getPage(molde.pagina);
+      const { width: PW, height: PH } = srcPg.getSize();
+      const pA = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - 1, top: topoRel });
+      const pR = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: uT.y - 9.9, top: uT.y + 12.1 });
+      const pS = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - SEP, top: rowB + 1 });
+      const hBase = topoRel - rowB + SEP, MAXN = Math.max(1, Math.floor((PH - 70 - hBase) / PASSO) + 1);
+      const TOPO = Math.min(PH - 28, topoRel), BASE = 36;
+      // desloca tudo que carimbarExtra desenha em dy (coordenadas do carimbo → posição na página)
+      const mover = (pg, dy) => ({
+        drawRectangle: o => pg.drawRectangle({ ...o, y: o.y + dy }),
+        drawText: (t, o) => pg.drawText(t, { ...o, y: o.y + dy }),
+        drawImage: (i, o) => pg.drawImage(i, { ...o, y: o.y + dy }),
+        drawLine: o => pg.drawLine({ ...o, start: { x: o.start.x, y: o.start.y + dy }, end: { x: o.end.x, y: o.end.y + dy } })
+      });
       // Insere os extras logo DEPOIS da última página de esquadria (antes da assinatura e dos anexos).
       let at = assinatura ? assinatura.pagina + 1 : doc.getPageCount();
-      for (let g = 0; g < extras.length; g += porPag) {
-        const [copiada] = await doc.copyPages(moldeDoc, [molde.pagina]);
-        doc.insertPage(at++, copiada);
-        if (molde.temCabecalhoObra) { // molde é a 1ª página de conteúdo: tapa o cabeçalho da obra em cima
-          const topo = slots[0].sec['LADO DE ABERTURA'];
-          if (topo) copiada.drawRectangle({ x: 0, y: topo.y + 78, width: 595, height: 842 - (topo.y + 78), color: branco });
-        }
-        copiada.drawRectangle({ x: 500, y: 16, width: 92, height: 26, color: branco }); // rodapé "N / 24"
-        for (let s = 0; s < slots.length; s++) {
-          const ex = extras[g + s];
-          if (!ex) { taparSlot(copiada, slots[s]); continue; }
-          await carimbarExtra(copiada, slots[s], ex, g + s);
-        }
+      let pg = null, cursor = 0;
+      for (let e = 0; e < extras.length; e++) {
+        const ex = extras[e];
+        let n = parseInt(String((ex.campos && ex.campos.qt) || '1').replace(/\D/g, ''), 10) || 1;
+        if (n > MAXN) { log('Item extra ' + (e + 1) + ': qtde ' + n + ' passa de uma página; saem ' + MAXN + ' linhas.'); n = MAXN; }
+        const h = hBase + (n - 1) * PASSO;
+        if (!pg || cursor - h < BASE) { pg = doc.insertPage(at++, [PW, PH]); cursor = TOPO; }
+        const dy = cursor - topoRel;
+        pg.drawPage(pA, { x: 0, y: rowB - 1 + dy });
+        for (let k = 1; k < n; k++) pg.drawPage(pR, { x: 0, y: uT.y - 9.9 - k * PASSO + dy });
+        pg.drawPage(pS, { x: 0, y: rowB - SEP - (n - 1) * PASSO + dy });
+        await carimbarExtra(mover(pg, dy), st, ex, e, n);
+        cursor -= h;
       }
       // Reposiciona a assinatura: apaga da página da última esquadria e põe numa página só dela,
       // logo após os extras (assim os extras ficam ENTRE a última esquadria e a assinatura).
@@ -1632,19 +1644,15 @@ async function gerarPdf() {
   }
   return await doc.save();
 
-  // Escolhe a página que serve de molde para os itens extras: de preferência uma página que
-  // NÃO seja a primeira de conteúdo (pra não ter o cabeçalho da obra) e que tenha 2 slots.
+  // Escolhe o item real que serve de carimbo para os extras: de preferência com 1 unidade e fora
+  // da 1ª página de conteúdo (que tem o cabeçalho da obra).
   function escolherMolde() {
-    const porPag = {};
-    itens.forEach(it => { if (it.sec['LADO DE ABERTURA'] && it.unidades.length) (porPag[it.pagina] = porPag[it.pagina] || []).push(it); });
-    const pags = Object.keys(porPag).map(Number).sort((a, b) => a - b);
-    if (!pags.length) return null;
-    const primeira = pags[0];
-    let escolhida = pags.find(p => p !== primeira && porPag[p].length >= 2);
-    if (escolhida == null) escolhida = pags.find(p => p !== primeira);
-    if (escolhida == null) escolhida = primeira;
-    const slots = porPag[escolhida].slice().sort((a, b) => b.sec['LADO DE ABERTURA'].y - a.sec['LADO DE ABERTURA'].y);
-    return { pagina: escolhida, slots, temCabecalhoObra: escolhida === primeira };
+    const ok = itens.filter(it => it.sec['LADO DE ABERTURA'] && it.unidades.length && it.cols);
+    if (!ok.length) return null;
+    const primeira = Math.min(...ok.map(it => it.pagina));
+    const slot = ok.find(it => it.unidades.length === 1 && it.pagina !== primeira)
+      || ok.find(it => it.unidades.length === 1) || ok[0];
+    return { pagina: slot.pagina, slot };
   }
 
   // true se o desenho à mão está em branco (nenhum traço escuro)
@@ -1660,8 +1668,11 @@ async function gerarPdf() {
     } catch (e) { return false; }
   }
   // Carimba um item extra no slot (geometria de um item real) de uma página-molde clonada.
-  async function carimbarExtra(pg, slot, ex, idx) {
+  async function carimbarExtra(pg, slot, ex, idx, n) {
     const sec = slot.sec, cols = slot.cols;
+    // linhas de medida: uma por unidade, a partir da linha de cima do carimbo, descendo 19,84pt cada
+    const uT = slot.unidades.length ? slot.unidades.reduce((a, u) => (u.y > a.y ? u : a)) : null;
+    const linhas = uT ? Array.from({ length: Math.max(1, n || 1) }, (_, k) => ({ y: uT.y - k * 19.84, datas: uT.datas.map(d => ({ ...d, y: d.y - k * 19.84 })) })) : [];
     const tipo = ((ex.campos && ex.campos.tipo) || ('ADC-' + String((idx || 0) + 1).padStart(2, '0'))).slice(0, 12); // editável; padrão ADC-NN
     const lado = sec['LADO DE ABERTURA'], tipoT = sec['TIPO DE TRILHO'] || { x: 18.8, y: lado.y - 61 };
     const c = ex.campos || {}, esc = ex.escopo || escopo;
@@ -1670,12 +1681,11 @@ async function gerarPdf() {
     const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 71;
     pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
     let budgetY = null;
-    if (slot.unidades.length) {
+    if (uT) {
       // Apaga só o TEXTO do "previsto" do molde (linha logo acima da 1ª linha de medida) e o eco do
       // tipo nas linhas de medida, com retângulos estreitos POR CÉLULA — sem encostar nas bordas da
       // tabela (se cobrir as bordas, a grade some e parece "cortado").
-      const uys = slot.unidades.map(u => u.y);
-      budgetY = Math.max(...uys) + 19.8; // altura de linha do modelo FastReport
+      budgetY = uT.y + 19.8; // altura de linha do modelo FastReport
       const limpa = (x1, x2, y) => pg.drawRectangle({ x: x1, y: y - 3, width: x2 - x1, height: 11, color: branco });
       limpa(33, 78, budgetY);                        // TIPO
       limpa(88, 108, budgetY);                       // QTDE
@@ -1684,7 +1694,7 @@ async function gerarPdf() {
       limpa(262, cols.esL - 26, budgetY);            // LOCALIZAÇÃO
       limpa(cols.esL - 15, cols.esL + 15, budgetY);  // previsto esquadria L
       limpa(cols.esH - 15, cols.esH + 15, budgetY);  // previsto esquadria H
-      for (const u of uys) limpa(33, 78, u);         // eco do tipo (CXxx) nas linhas de medida
+      for (const u of linhas) limpa(33, 78, u.y);    // eco do tipo (CXxx) nas linhas de medida
     }
     // rótulo no topo da peça
     pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
@@ -1703,9 +1713,8 @@ async function gerarPdf() {
         pg.drawImage(img, { x: cqX + (maxW - w) / 2 + 2, y: cqYb + (maxH - h) / 2 + 2, width: w, height: h });
       } catch (e) { log('Croqui do extra: ' + e.message); }
     }
-    // medidas na 1ª linha da tabela
-    const un0 = slot.unidades[0];
-    if (un0) {
+    // medidas: repete a coleta em TODAS as linhas (uma por unidade), igual ao padrão do caderno
+    for (const un0 of linhas) {
       if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.cmL, un0.y, azul);
       if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.cmH, un0.y, azul);
       if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.esL, un0.y, azul);
