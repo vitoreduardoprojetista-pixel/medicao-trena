@@ -162,6 +162,17 @@
   .ordRow .txt b { font-size: 15px; }
   .ordRow .updown { display: flex; flex-direction: column; gap: 3px; }
   .ordRow .updown button { background: var(--tint); color: var(--tint-ink); border: 1px solid var(--tint-bd); font-size: 12px; padding: 4px 9px; border-radius: 7px; }
+  /* Tela de liberação (licença por período) */
+  #trava { position: fixed; inset: 0; background: var(--grad); z-index: 70; display: none; align-items: center; justify-content: center; padding: 24px; }
+  .travaCard { background: #fff; border-radius: 20px; padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0px)); width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); }
+  .travaCard h2 { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: var(--brand-ink); }
+  .travaCard p { margin: 0 0 14px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .travaCard textarea { width: 100%; min-height: 92px; font-size: 13px; font-family: ui-monospace, monospace; border: 2px solid var(--line2); border-radius: 12px; padding: 10px; margin: 0; }
+  .travaCard textarea:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+  .travaCard button { width: 100%; margin-top: 12px; }
+  #travaMsg { font-size: 13px; margin-top: 10px; min-height: 18px; font-weight: 700; }
+  #travaMsg.erro { color: var(--danger); }
+  #travaMsg.ok { color: var(--ok-ink); }
 </style>
 </head>
 <body>
@@ -294,6 +305,17 @@
   </div>
 </div>
 
+<!-- Tela de liberação (licença por período). Fica oculta; só aparece quando o bloqueio está ligado. -->
+<div id="trava">
+  <div class="travaCard">
+    <h2>Liberar aplicativo</h2>
+    <p>Cole aqui a chave de liberação que você recebeu. Ela libera o app por um período.</p>
+    <textarea id="travaChave" placeholder="Cole a chave aqui" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    <button id="travaOk" class="ok">Liberar</button>
+    <div id="travaMsg"></div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="tuya.js"></script>
@@ -305,6 +327,50 @@ function log(t) { $('log').textContent = t + '\n' + $('log').textContent; }
 // Registro mais limpo para a conexão da trena: esconde os códigos técnicos de rotina.
 function logTuya(t) { if (/^Tuya: recebido código|^Tuya DP:|^Tuya: protocolo/.test(t)) return; log(t); }
 function status(t) { $('status').textContent = t; }
+
+// ---------- Licença (liberação por período) ----------
+// Bloqueio por chave assinada. Enquanto LIC_EXIGIR = false, o app abre normal (fase de testes).
+// Para começar a exigir chave dos clientes, troque para true e publique.
+// Aqui fica SÓ a chave PÚBLICA: ela CONFERE a chave mas NÃO consegue criar nenhuma.
+// As chaves são criadas no gerador (gerador.html), que usa a sua chave PRIVADA (só sua).
+const LIC_EXIGIR = false;
+const LIC_PUB = { "kty": "EC", "crv": "P-256", "x": "HorpVMf5LxF3PW_3Yrw7CKnc6wJmy_FAWuVKvTjTXo0", "y": "bYmTIM_J4MIg3MaVVSF81eE9pH8zi6t6r0kL2dwoGQc", "ext": true };
+const licB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+let _licPub = null;
+async function licPubKey() { return _licPub || (_licPub = await crypto.subtle.importKey('jwk', LIC_PUB, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])); }
+async function licValidar(chave) {
+  try {
+    const [pb, sb] = String(chave).trim().split('.');
+    if (!pb || !sb) return null;
+    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, await licPubKey(), licB64u(sb), new TextEncoder().encode(pb));
+    if (!ok) return null;
+    return JSON.parse(new TextDecoder().decode(licB64u(pb))); // { n: nome, exp: 'AAAA-MM-DD', id }
+  } catch (e) { return null; }
+}
+function licDiasRestantes(exp) {
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  return Math.round((new Date(exp + 'T00:00:00') - h) / 86400000);
+}
+function lerLic() { try { return localStorage.getItem('licenca_chave') || ''; } catch (e) { return ''; } }
+async function licChecar() {
+  if (!LIC_EXIGIR) return true;
+  const salva = lerLic();
+  if (salva) { const p = await licValidar(salva); if (p && licDiasRestantes(p.exp) >= 0) return true; }
+  $('trava').style.display = 'flex';
+  return false;
+}
+if ($('travaOk')) $('travaOk').onclick = async () => {
+  const chave = $('travaChave').value.trim();
+  const msg = $('travaMsg');
+  const p = await licValidar(chave);
+  if (!p) { msg.className = 'erro'; msg.textContent = 'Chave inválida. Confira se copiou a chave inteira.'; return; }
+  const dias = licDiasRestantes(p.exp);
+  if (dias < 0) { msg.className = 'erro'; msg.textContent = 'Esta chave venceu em ' + p.exp + '. Peça uma chave nova.'; return; }
+  try { localStorage.setItem('licenca_chave', chave); } catch (e) { }
+  msg.className = 'ok'; msg.textContent = 'Liberado! Válido por mais ' + dias + ' dia(s).';
+  setTimeout(() => { $('trava').style.display = 'none'; }, 700);
+};
+licChecar();
 
 // ---------- Catálogo de flags do caderno (seções e opções) ----------
 // xRef = x do cabeçalho da seção no PDF (para achar a seção certa na página).

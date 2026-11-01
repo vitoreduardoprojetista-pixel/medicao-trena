@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gerador de chaves</title>
+<style>
+  :root {
+    --grad: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #9333ea 100%);
+    --brand: #4f46e5; --brand-ink: #4338ca; --bg: #eef1fa; --card: #fff;
+    --ink: #1e2233; --muted: #6b7280; --line2: #d7dbe8; --ok: #059669; --ok-ink: #047857;
+    --danger: #e11d48; --tint: #eef0fe; --tint-bd: #c9cdf6; --shadow: 0 2px 10px rgba(49,46,129,.08);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0 14px 40px; background: var(--bg); color: var(--ink); }
+  h1 { font-size: 19px; font-weight: 800; margin: 0 -14px 16px; padding: 16px; background: var(--grad); color: #fff; box-shadow: 0 6px 20px rgba(79,70,229,.28); }
+  .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .card h2 { font-size: 15px; font-weight: 700; margin: 0 0 10px; color: var(--brand-ink); text-transform: uppercase; letter-spacing: .4px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
+  input, textarea, select { width: 100%; font-size: 16px; padding: 11px; border: 2px solid var(--line2); border-radius: 12px; font-family: inherit; }
+  textarea { font-size: 12px; font-family: ui-monospace, monospace; min-height: 70px; }
+  input:focus, textarea:focus, select:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+  button { width: 100%; font-size: 16px; font-weight: 700; padding: 13px; border: 0; border-radius: 12px; color: #fff; background: var(--brand); margin-top: 12px; cursor: pointer; }
+  button.ok { background: linear-gradient(135deg, #10b981, #059669); }
+  button.sec { background: #727586; }
+  .dias { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
+  .dias button { margin: 0; padding: 11px 0; font-size: 14px; background: var(--tint); color: var(--brand-ink); border: 2px solid var(--tint-bd); }
+  .dias button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  #saida { display: none; }
+  #chaveOut { background: #0f1222; color: #d7f5e6; border-color: #0f1222; }
+  .ajuda { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 6px 0 0; }
+  .msg { font-size: 13px; font-weight: 700; margin-top: 8px; min-height: 16px; }
+  .msg.erro { color: var(--danger); }
+  .msg.ok { color: var(--ok-ink); }
+  .aviso { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 12px; padding: 11px 13px; font-size: 13px; line-height: 1.5; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+  .pill.ok { background: #e7f7f0; color: var(--ok-ink); }
+  .pill.no { background: #fde8ec; color: var(--danger); }
+</style>
+</head>
+<body>
+<h1>Gerador de chaves — Medição de Esquadrias</h1>
+
+<div class="card">
+  <h2>1 · Sua chave secreta</h2>
+  <div id="estadoSegredo"></div>
+  <div id="pedeSegredo">
+    <div class="aviso">Cole a sua <b>chave secreta</b> (a que o Claude te entregou em arquivo separado). Ela fica guardada só neste aparelho — <b>nunca compartilhe e nunca publique</b>. É ela que cria as chaves dos clientes.</div>
+    <label>Chave secreta (JSON)</label>
+    <textarea id="segredo" placeholder='{"kty":"EC","crv":"P-256",...}' autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    <button id="salvarSegredo">Guardar neste aparelho</button>
+    <div id="msgSegredo" class="msg"></div>
+  </div>
+  <button id="trocarSegredo" class="sec" style="display:none">Trocar / remover a chave secreta</button>
+</div>
+
+<div class="card" id="cardGerar" style="display:none">
+  <h2>2 · Criar chave de um cliente</h2>
+  <label>Nome do cliente (opcional, só para você lembrar)</label>
+  <input id="nome" placeholder="Ex.: Vidraçaria Fulano" autocapitalize="words">
+  <label>Liberar por quantos dias?</label>
+  <div class="dias" id="dias">
+    <button data-d="7">7</button><button data-d="15">15</button>
+    <button data-d="30" class="on">30</button><button data-d="60">60</button>
+    <button data-d="90">90</button><button data-d="180">180</button>
+    <button data-d="365">365</button><button data-d="0">Outro</button>
+  </div>
+  <input id="diasOutro" inputmode="numeric" placeholder="Número de dias" style="display:none;margin-top:8px">
+  <button id="gerar" class="ok">Gerar chave</button>
+  <div id="msgGerar" class="msg"></div>
+</div>
+
+<div class="card" id="saida">
+  <h2>3 · Chave criada</h2>
+  <p class="ajuda" id="resumo"></p>
+  <label>Chave (copie e mande para o cliente)</label>
+  <textarea id="chaveOut" readonly rows="4"></textarea>
+  <button id="copiar" class="ok">Copiar chave</button>
+  <button id="compartilhar" class="sec">Compartilhar…</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const CHAVE_SEGREDO = 'gerador_segredo';
+let privKey = null, diasSel = 30;
+
+function fmtData(d) { return d.toLocaleDateString('pt-BR'); }
+
+async function carregarSegredo() {
+  let jwk = null;
+  try { const s = localStorage.getItem(CHAVE_SEGREDO); if (s) jwk = JSON.parse(s); } catch (e) { }
+  if (!jwk) { mostrarSemSegredo(); return; }
+  try {
+    privKey = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    $('estadoSegredo').innerHTML = '<span class="pill ok">✓ Chave secreta guardada neste aparelho</span>';
+    $('pedeSegredo').style.display = 'none';
+    $('trocarSegredo').style.display = 'block';
+    $('cardGerar').style.display = 'block';
+  } catch (e) { mostrarSemSegredo(); }
+}
+function mostrarSemSegredo() {
+  privKey = null;
+  $('estadoSegredo').innerHTML = '<span class="pill no">Nenhuma chave secreta neste aparelho</span>';
+  $('pedeSegredo').style.display = 'block';
+  $('trocarSegredo').style.display = 'none';
+  $('cardGerar').style.display = 'none';
+  $('saida').style.display = 'none';
+}
+
+$('salvarSegredo').onclick = async () => {
+  const msg = $('msgSegredo'); msg.className = 'msg';
+  let jwk;
+  try { jwk = JSON.parse($('segredo').value.trim()); } catch (e) { msg.classList.add('erro'); msg.textContent = 'Não consegui ler o texto. Cole o JSON inteiro da chave secreta.'; return; }
+  if (!jwk.d) { msg.classList.add('erro'); msg.textContent = 'Essa parece ser a chave pública. A secreta tem um campo "d".'; return; }
+  try {
+    await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  } catch (e) { msg.classList.add('erro'); msg.textContent = 'Chave secreta inválida.'; return; }
+  try { localStorage.setItem(CHAVE_SEGREDO, JSON.stringify(jwk)); } catch (e) { }
+  $('segredo').value = '';
+  carregarSegredo();
+};
+$('trocarSegredo').onclick = () => { try { localStorage.removeItem(CHAVE_SEGREDO); } catch (e) { } mostrarSemSegredo(); };
+
+$('dias').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('dias').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  diasSel = parseInt(b.dataset.d, 10);
+  $('diasOutro').style.display = diasSel === 0 ? 'block' : 'none';
+});
+
+$('gerar').onclick = async () => {
+  const msg = $('msgGerar'); msg.className = 'msg';
+  if (!privKey) { msg.classList.add('erro'); msg.textContent = 'Guarde a chave secreta primeiro.'; return; }
+  let dias = diasSel;
+  if (dias === 0) dias = parseInt(($('diasOutro').value || '').replace(/\D/g, ''), 10);
+  if (!(dias > 0)) { msg.classList.add('erro'); msg.textContent = 'Informe um número de dias válido.'; return; }
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const fim = new Date(hoje.getTime() + dias * 86400000);
+  const exp = fim.getFullYear() + '-' + String(fim.getMonth() + 1).padStart(2, '0') + '-' + String(fim.getDate()).padStart(2, '0');
+  const id = Math.random().toString(36).slice(2, 8);
+  const payload = { n: $('nome').value.trim() || '-', exp, id };
+  const pb = b64u(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privKey, new TextEncoder().encode(pb));
+  const chave = pb + '.' + b64u(sig);
+  $('chaveOut').value = chave;
+  $('resumo').textContent = (payload.n !== '-' ? payload.n + ' · ' : '') + 'libera por ' + dias + ' dia(s), vence em ' + fmtData(fim) + '.';
+  $('saida').style.display = 'block';
+  $('saida').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  msg.classList.add('ok'); msg.textContent = 'Chave criada abaixo.';
+};
+
+$('copiar').onclick = async () => {
+  try { await navigator.clipboard.writeText($('chaveOut').value); $('copiar').textContent = 'Copiado! ✓'; setTimeout(() => $('copiar').textContent = 'Copiar chave', 1500); }
+  catch (e) { $('chaveOut').select(); document.execCommand('copy'); }
+};
+$('compartilhar').onclick = async () => {
+  const texto = 'Chave de liberação do aplicativo de medição:\n\n' + $('chaveOut').value;
+  if (navigator.share) { try { await navigator.share({ text: texto }); } catch (e) { } }
+  else { try { await navigator.clipboard.writeText(texto); $('compartilhar').textContent = 'Copiado! ✓'; setTimeout(() => $('compartilhar').textContent = 'Compartilhar…', 1500); } catch (e) { } }
+};
+
+carregarSegredo();
+</script>
+</body>
+</html>
