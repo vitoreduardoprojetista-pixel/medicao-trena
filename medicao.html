@@ -181,6 +181,8 @@
   #extraFinal > span { font-size: 13px; color: var(--muted); font-weight: 600; }
   #extraFinal .fin { font-size: 13px; padding: 8px 12px; background: #e5e7eb; color: #111; }
   #extraFinal .fin.on { background: var(--brand); color: #fff; }
+  #drawAcoes { display: flex; gap: 8px; background: var(--card); padding: 9px 11px; border-top: 1px solid var(--line); }
+  #drawAcoes button { flex: 1; font-size: 14px; padding: 10px 8px; }
   #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
   #drawCanvas { background: #fff; border-radius: 8px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 4px 20px rgba(0,0,0,.45); }
   /* Painel de configurações */
@@ -299,11 +301,6 @@
 <div id="draw">
   <div id="drawTopo">
     <span id="drawTitulo">Desenho à mão</span>
-    <div>
-      <button id="drawLimpar" class="cl">Limpar</button>
-      <button id="drawCancelar" class="sec">Cancelar</button>
-      <button id="drawSalvar" class="ok">Salvar</button>
-    </div>
   </div>
   <div id="drawCampos">
     <label id="labTipo" class="full">Tipo<input id="dcTipo" placeholder="ex.: ADC-01" autocapitalize="characters"></label>
@@ -319,6 +316,11 @@
     <span>Finalidade:</span>
     <button type="button" id="finOrc" class="fin on">Para orçamento</button>
     <button type="button" id="finFab" class="fin">Para fabricação</button>
+  </div>
+  <div id="drawAcoes">
+    <button id="drawLimpar" class="cl">Limpar</button>
+    <button id="drawCancelar" class="sec">Cancelar</button>
+    <button id="drawSalvar" class="ok">Salvar</button>
   </div>
   <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
 </div>
