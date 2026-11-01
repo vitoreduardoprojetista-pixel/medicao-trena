@@ -34,6 +34,9 @@
   .dias { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
   .dias button { margin: 0; padding: 11px 0; font-size: 14px; background: var(--tint); color: var(--brand-ink); border: 2px solid var(--tint-bd); }
   .dias button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .modo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .modo button { margin: 0; padding: 11px 0; font-size: 14px; background: var(--tint); color: var(--brand-ink); border: 2px solid var(--tint-bd); }
+  .modo button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
   #saida { display: none; }
   #chaveOut { background: #0f1222; color: #d7f5e6; border-color: #0f1222; }
   .ajuda { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 6px 0 0; }
@@ -70,14 +73,26 @@
   <h2>2 · Criar chave de um cliente</h2>
   <label>Nome do cliente (opcional, só para você lembrar)</label>
   <input id="nome" placeholder="Ex.: Vidraçaria Fulano" autocapitalize="words">
-  <label>Liberar por quantos dias?</label>
-  <div class="dias" id="dias">
-    <button data-d="7">7</button><button data-d="15">15</button>
-    <button data-d="30" class="on">30</button><button data-d="60">60</button>
-    <button data-d="90">90</button><button data-d="180">180</button>
-    <button data-d="365">365</button><button data-d="0">Outro</button>
+  <label>Como definir o prazo?</label>
+  <div class="modo" id="modo">
+    <button data-m="dias" class="on">Por dias</button>
+    <button data-m="data">Até uma data</button>
   </div>
-  <input id="diasOutro" inputmode="numeric" placeholder="Número de dias" style="display:none;margin-top:8px">
+  <div id="porDias">
+    <label>Liberar por quantos dias?</label>
+    <div class="dias" id="dias">
+      <button data-d="7">7</button><button data-d="15">15</button>
+      <button data-d="30" class="on">30</button><button data-d="60">60</button>
+      <button data-d="90">90</button><button data-d="180">180</button>
+      <button data-d="365">365</button><button data-d="0">Outro</button>
+    </div>
+    <input id="diasOutro" inputmode="numeric" placeholder="Número de dias" style="display:none;margin-top:8px">
+  </div>
+  <div id="porData" style="display:none">
+    <label>Vence em (escolha a data)</label>
+    <input type="date" id="dataVenc">
+    <p class="ajuda" style="margin-top:6px">Pra dar continuidade num aparelho novo, use a mesma data de vencimento de antes.</p>
+  </div>
   <button id="gerar" class="ok">Gerar QR de ativação</button>
   <div id="msgGerar" class="msg"></div>
 </div>
@@ -99,7 +114,7 @@ const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\
 const CHAVE_SEGREDO = 'gerador_segredo';
 // Endereço do app (troque aqui se um dia mudar o domínio):
 const APP_URL = 'https://vitoreduardoprojetista-pixel.github.io/medicao-trena/medicao.html';
-let privKey = null, diasSel = 30, _cont = null;
+let privKey = null, diasSel = 30, _cont = null, modo = 'dias';
 
 function iniciarContagem(act) {
   clearInterval(_cont);
@@ -150,6 +165,13 @@ $('salvarSegredo').onclick = async () => {
 };
 $('trocarSegredo').onclick = () => { try { localStorage.removeItem(CHAVE_SEGREDO); } catch (e) { } mostrarSemSegredo(); };
 
+$('modo').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('modo').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); modo = b.dataset.m;
+  $('porDias').style.display = modo === 'dias' ? 'block' : 'none';
+  $('porData').style.display = modo === 'data' ? 'block' : 'none';
+});
+try { $('dataVenc').min = new Date().toISOString().slice(0, 10); } catch (e) { }
 $('dias').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('dias').querySelectorAll('button').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
@@ -160,12 +182,22 @@ $('dias').querySelectorAll('button').forEach(b => b.onclick = () => {
 $('gerar').onclick = async () => {
   const msg = $('msgGerar'); msg.className = 'msg';
   if (!privKey) { msg.classList.add('erro'); msg.textContent = 'Guarde a chave secreta primeiro.'; return; }
-  let dias = diasSel;
-  if (dias === 0) dias = parseInt(($('diasOutro').value || '').replace(/\D/g, ''), 10);
-  if (!(dias > 0)) { msg.classList.add('erro'); msg.textContent = 'Informe um número de dias válido.'; return; }
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const fim = new Date(hoje.getTime() + dias * 86400000);
-  const exp = fim.getFullYear() + '-' + String(fim.getMonth() + 1).padStart(2, '0') + '-' + String(fim.getDate()).padStart(2, '0');
+  let fim, dias, exp;
+  if (modo === 'data') {
+    const v = $('dataVenc').value;
+    if (!v) { msg.classList.add('erro'); msg.textContent = 'Escolha a data de vencimento.'; return; }
+    fim = new Date(v + 'T00:00:00');
+    dias = Math.round((fim - hoje) / 86400000);
+    if (!(dias >= 0)) { msg.classList.add('erro'); msg.textContent = 'A data precisa ser hoje ou no futuro.'; return; }
+    exp = v;
+  } else {
+    dias = diasSel;
+    if (dias === 0) dias = parseInt(($('diasOutro').value || '').replace(/\D/g, ''), 10);
+    if (!(dias > 0)) { msg.classList.add('erro'); msg.textContent = 'Informe um número de dias válido.'; return; }
+    fim = new Date(hoje.getTime() + dias * 86400000);
+    exp = fim.getFullYear() + '-' + String(fim.getMonth() + 1).padStart(2, '0') + '-' + String(fim.getDate()).padStart(2, '0');
+  }
   const id = Math.random().toString(36).slice(2, 8);
   const act = Date.now() + 10 * 60 * 1000;      // convite de ativação vale 10 minutos
   const payload = { n: $('nome').value.trim() || '-', exp, act, id };
