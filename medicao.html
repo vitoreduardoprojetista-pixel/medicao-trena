@@ -43,6 +43,8 @@
   .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .botoes button { min-height: 56px; font-size: 15px; box-shadow: var(--shadow); }
   .botoes .novaBtn { grid-column: 1 / -1; background: linear-gradient(135deg, #059669, #0d9488); }
+  #pronto { position: fixed; inset: 0; background: rgba(17,24,39,.55); z-index: 70; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .prontoCard { background: #fff; border-radius: 18px; padding: 22px 18px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
   #nova { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
   #novaTopo { background: var(--grad); color: #fff; padding: calc(14px + env(safe-area-inset-top, 0px)) 14px 14px; display: flex; align-items: center; justify-content: space-between; }
   #novaTopo > span { font-size: 16px; font-weight: 700; }
@@ -319,6 +321,19 @@
       <div style="font-size:13px;color:#6b7280;margin:6px 0">Use só se o Claude pedir, para depurar a conexão da trena.</div>
       <button id="btnCopiarLog" class="sec" style="width:100%">Copiar registro</button>
     </div>
+  </div>
+</div>
+
+<!-- PDF pronto (quando o Android não abre o compartilhar sozinho) -->
+<div id="pronto">
+  <div class="prontoCard">
+    <div style="font-size:40px">✅</div>
+    <div style="font-size:18px;font-weight:800;margin:4px 0">PDF pronto</div>
+    <div id="prontoNome" style="font-size:13px;color:#6b7280;word-break:break-word;margin-bottom:14px"></div>
+    <button id="prontoEnviar" class="ok" style="width:100%">📤 Enviar / compartilhar</button>
+    <button id="prontoSalvar" class="sec" style="width:100%;margin-top:8px">⬇ Salvar no celular</button>
+    <button id="prontoFechar" class="cl" style="width:100%;margin-top:8px">Fechar</button>
+    <div id="prontoMsg" style="font-size:13px;color:#059669;margin-top:10px"></div>
   </div>
 </div>
 
@@ -2044,42 +2059,68 @@ async function gerarCadernoNovo() {
   return await out.save();
 }
 
+// Entrega o PDF: tenta abrir o "Compartilhar" do celular. Se o caderno demorou para montar, o Android
+// não deixa abrir sozinho (exige um toque recente) — então mostra a tela "Caderno pronto" com botões.
+function baixarArquivo(arq) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(arq); a.download = arq.name; document.body.appendChild(a); a.click(); a.remove();
+}
+async function compartilharArquivo(arq) {
+  if (navigator.canShare && navigator.canShare({ files: [arq] })) { await navigator.share({ files: [arq], title: arq.name }); return true; }
+  baixarArquivo(arq); return true;
+}
+function mostrarPronto(arq) {
+  $('prontoNome').textContent = arq.name;
+  $('prontoMsg').textContent = '';
+  $('prontoEnviar').onclick = async () => {
+    try { await compartilharArquivo(arq); $('pronto').style.display = 'none'; }
+    catch (e) { if (e.name !== 'AbortError') { baixarArquivo(arq); $('prontoMsg').textContent = 'Não abriu o compartilhar; o arquivo foi salvo em Downloads.'; } }
+  };
+  $('prontoSalvar').onclick = () => { baixarArquivo(arq); $('prontoMsg').textContent = 'Salvo na pasta Downloads do celular.'; };
+  $('pronto').style.display = 'flex';
+}
+$('prontoFechar').onclick = () => { $('pronto').style.display = 'none'; };
+async function entregarArquivo(arq) {
+  try { await compartilharArquivo(arq); }
+  catch (e) { if (e.name === 'AbortError') return; mostrarPronto(arq); }
+}
+function erroGerar(e) {
+  if (e && e.name === 'AbortError') return;
+  status('Erro ao gerar o PDF: ' + e.message); log(e.stack || String(e));
+  alert('Não foi possível gerar o PDF:\n\n' + e.message);
+}
+
 $('btnGerar').onclick = async () => {
+  const btn = $('btnGerar'), rotulo = btn.textContent;
   try {
     // Nome = caderno + etapa: "<caderno> - CONTRAMARCO ETAPA 01.pdf" / "... ESQUADRIAS ETAPA 02.pdf".
     // Sugere o próximo número (por tipo e por O.S.), mas deixa você mudar na hora.
     const base = (nomeArquivo || 'caderno').replace(/\.pdf$/i, '');
+    let nome, bytes;
     if (obra.nova) { // caderno do zero: gera o caderno completo (capa, cabeçalho, quadros, assinatura)
+      btn.disabled = true; btn.textContent = 'Montando o caderno…';
       status('Montando o caderno da obra nova...');
-      const nomeN = `${base} - CADERNO DE MEDIÇÃO.pdf`;
-      const arqN = new File([await gerarCadernoNovo()], nomeN, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [arqN] })) await navigator.share({ files: [arqN], title: nomeN });
-      else { const a = document.createElement('a'); a.href = URL.createObjectURL(arqN); a.download = nomeN; a.click(); }
-      status('Caderno gerado: ' + nomeN);
-      return;
-    }
-    const label = escopo === 'cm' ? 'CONTRAMARCO' : escopo === 'es' ? 'ESQUADRIAS' : 'MEDIÇÃO';
-    const ekey = 'etapa_' + (obra.os || nomeArquivo) + '_' + (escopo || 'ambos');
-    const sugerido = (lerJson(ekey) || 0) + 1;
-    const resp = prompt('Número da etapa (' + label + '):', String(sugerido));
-    if (resp === null) { status('Geração cancelada.'); return; }
-    let n = parseInt(String(resp).replace(/\D/g, ''), 10);
-    if (!(n > 0)) n = sugerido;
-    gravarJson(ekey, n);
-    status('Gerando PDF...');
-    const bytes = await gerarPdf();
-    const nome = `${base} - ${label} ETAPA ${String(n).padStart(2, '0')}.pdf`;
-    const arq = new File([bytes], nome, { type: 'application/pdf' });
-    if (navigator.canShare && navigator.canShare({ files: [arq] })) {
-      await navigator.share({ files: [arq], title: nome });
+      nome = `${base} - CADERNO DE MEDIÇÃO.pdf`;
+      bytes = await gerarCadernoNovo();
     } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(arq); a.download = nome; a.click();
+      const label = escopo === 'cm' ? 'CONTRAMARCO' : escopo === 'es' ? 'ESQUADRIAS' : 'MEDIÇÃO';
+      const ekey = 'etapa_' + (obra.os || nomeArquivo) + '_' + (escopo || 'ambos');
+      const sugerido = (lerJson(ekey) || 0) + 1;
+      const resp = prompt('Número da etapa (' + label + '):', String(sugerido));
+      if (resp === null) { status('Geração cancelada.'); return; }
+      let n = parseInt(String(resp).replace(/\D/g, ''), 10);
+      if (!(n > 0)) n = sugerido;
+      gravarJson(ekey, n);
+      btn.disabled = true; btn.textContent = 'Gerando PDF…';
+      status('Gerando PDF...');
+      bytes = await gerarPdf();
+      nome = `${base} - ${label} ETAPA ${String(n).padStart(2, '0')}.pdf`;
     }
+    const arq = new File([bytes], nome, { type: 'application/pdf' });
     status('PDF gerado: ' + nome);
-  } catch (e) {
-    if (e.name !== 'AbortError') { status('Erro ao gerar o PDF: ' + e.message); log(e.stack); }
-  }
+    await entregarArquivo(arq);
+  } catch (e) { erroGerar(e); }
+  finally { btn.disabled = false; btn.textContent = rotulo; }
 };
 </script>
 </body>
