@@ -155,7 +155,8 @@
   .extraThumb .edt { position: absolute; top: -7px; left: -7px; background: var(--brand); color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; font-size: 13px; padding: 0; line-height: 24px; box-shadow: var(--shadow); }
   .extraThumb .flg { position: absolute; bottom: 20px; right: 2px; background: var(--brand2); color: #fff; border: 0; border-radius: 6px; font-size: 11px; padding: 2px 6px; }
   /* Tela de desenho à mão */
-  #draw { position: fixed; inset: 0; background: #2b3042; z-index: 60; display: none; flex-direction: column; }
+  #draw { position: fixed; inset: 0; background: #2b3042; z-index: 60; display: none; flex-direction: column; overflow-y: auto; }
+  #draw > * { flex-shrink: 0; }
   #drawTopo { background: var(--grad); color: #fff; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   #drawTopo > span { font-size: 15px; font-weight: 700; }
   #drawTopo > div { display: flex; gap: 6px; }
@@ -175,6 +176,14 @@
   #labDesc, #labLinha { display: none !important; }
   #draw.modoExtra #labDesc, #draw.modoExtra #labLinha { display: flex !important; }
   #dcLinha { text-transform: uppercase; }
+  #labDet { display: none; grid-column: 1 / -1; }
+  #draw.modoExtra #labDet { display: block; }
+  .detRot { font-size: 11px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { font-size: 13px; padding: 7px 11px; background: #e5e7eb; color: #111; min-height: 0; box-shadow: none; }
+  .chips button.on { background: var(--brand); color: #fff; }
+  #vidroBox { display: none; margin-top: 8px; padding: 8px; background: var(--tint); border-radius: 10px; }
+  #vidroBox.on { display: block; }
   #drawCampos textarea { font-size: 15px; padding: 8px; border: 1.5px solid var(--line2); border-radius: 9px; width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; text-transform: uppercase; }
   #draw.modoExtra #labPeit { display: none; }  /* no item extra o peitoril vem pelas flags (alvenaria) */
   #extraFinal { display: none; background: var(--card); padding: 9px 11px; align-items: center; gap: 8px; border-top: 1px solid var(--line); }
@@ -184,7 +193,7 @@
   #extraFinal .fin.on { background: var(--brand); color: #fff; }
   #drawAcoes { display: flex; gap: 8px; background: var(--card); padding: 9px 11px; border-top: 1px solid var(--line); }
   #drawAcoes button { flex: 1; font-size: 14px; padding: 10px 8px; }
-  #drawWrap { flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
+  #drawWrap { flex: 1 0 auto; min-height: 78vh; height: 78vh; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
   #drawCanvas { background: #fff; border-radius: 8px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 4px 20px rgba(0,0,0,.45); }
   /* Painel de configurações */
   #config { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
@@ -307,6 +316,10 @@
     <label id="labTipo" class="full">Tipo<input id="dcTipo" placeholder="ex.: ADC-01" autocapitalize="characters"></label>
     <label id="labDesc" class="full">Descrição da esquadria<textarea id="dcDesc" rows="2" placeholder="ex.: PORTA DE CORRER 2 FOLHAS, VIDRO TEMPERADO 6MM INCOLOR" autocapitalize="characters"></textarea></label>
     <label id="labLinha" class="full">Linha<input id="dcLinha" placeholder="ex.: GOLD" autocapitalize="characters"></label>
+    <div id="labDet" class="full"><span class="detRot">Detalhe da esquadria</span>
+      <div class="chips" id="detOps"></div>
+      <div id="vidroBox"><span class="detRot">Vidro</span><div class="chips" id="vidroOps"></div></div>
+    </div>
     <label>Largura<span class="comMedir"><input id="dcL" inputmode="numeric" placeholder="ex.: 1200"><button type="button" id="dcLMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Altura<span class="comMedir"><input id="dcA" inputmode="numeric" placeholder="ex.: 1500"><button type="button" id="dcAMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
@@ -1436,7 +1449,20 @@ function abrirDesenho() {
   $('drawTitulo').textContent = 'Desenho à mão';
   prepararCanvas();
   DC_IDS.forEach(id => $(id).value = '');
-  $('draw').style.display = 'flex';
+  setDetalhe('', '');
+  $('draw').style.display = 'flex'; $('draw').scrollTop = 0;
+}
+let drawDet = '', drawVidro = '';
+function setDetalhe(det, vid) {
+  drawDet = det || ''; drawVidro = det === 'vidro' ? (vid || '') : '';
+  $('detOps').innerHTML = DET_OPS.map(([id, r]) => `<button type="button" data-det="${id}" class="${drawDet === id ? 'on' : ''}">${r}</button>`).join('');
+  $('vidroOps').innerHTML = VIDRO_OPS.map(([id, r]) => `<button type="button" data-vid="${id}" class="${drawVidro === id ? 'on' : ''}">${r}</button>`).join('');
+  $('vidroBox').classList.toggle('on', drawDet === 'vidro');
+  $('detOps').querySelectorAll('[data-det]').forEach(b => b.onclick = () => setDetalhe(drawDet === b.dataset.det ? '' : b.dataset.det, drawVidro));
+  $('vidroOps').querySelectorAll('[data-vid]').forEach(b => b.onclick = () => {
+    setDetalhe('vidro', drawVidro === b.dataset.vid ? '' : b.dataset.vid);
+    if (drawVidro === 'outros') { $('dcObs').focus(); status('Vidro "outros": escreva as informações do vidro em Observações.'); }
+  });
 }
 function preencherCampos(c) {
   c = c || {};
@@ -1444,6 +1470,7 @@ function preencherCampos(c) {
   $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
   $('dcDesc').value = c.desc || '';
   $('dcLinha').value = c.linha || '';
+  setDetalhe(c.detalhe, c.vidro);
 }
 // Abre o editor de desenho em "modo item extra": campos L/A medíveis pela trena. ex=null cria um novo.
 function abrirExtraDesenho(ex) {
@@ -1459,17 +1486,18 @@ function abrirExtraDesenho(ex) {
   // Tipo do item adicional: sugere ADC-01, ADC-02... pela ordem, mas fica editável.
   const pos = ex ? extras.indexOf(ex) : extras.length;
   $('dcTipo').value = (ex && ex.campos && ex.campos.tipo) || tipoPadrao(pos < 0 ? extras.length : pos);
-  $('draw').style.display = 'flex';
+  $('draw').style.display = 'flex'; $('draw').scrollTop = 0;
   if (ex && ex.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = ex.base; }
 }
 function abrirDesenhoEdicao(k) {
   const a = anexos[k]; if (!a || a.tipo !== 'desenho') return;
   editIndex = k;
   prepararCanvas();
+  setDetalhe('', '');
   const c = a.campos || {};
   $('dcL').value = c.L || ''; $('dcA').value = c.A || ''; $('dcQt').value = c.qt || '';
   $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
-  $('draw').style.display = 'flex';
+  $('draw').style.display = 'flex'; $('draw').scrollTop = 0;
   if (a.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = a.base; }
 }
 function posCanvas(ev) {
@@ -1477,7 +1505,7 @@ function posCanvas(ev) {
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
 function lerCamposDesenho() {
-  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase(), linha: $('dcLinha').value.replace(/\s+/g, ' ').trim().toUpperCase().replace(/^LINHA\s+/, '') };
+  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase(), linha: $('dcLinha').value.replace(/\s+/g, ' ').trim().toUpperCase().replace(/^LINHA\s+/, ''), detalhe: drawDet, vidro: drawVidro };
 }
 // Monta a imagem final: cabeçalho com os campos digitados + o desenho (base) embaixo.
 function comporDesenho(base, campos) {
@@ -1600,6 +1628,7 @@ function desenharCartoesObra(g) {
       <div class="exInfo"><h2>${licEsc(tipo)} <span style="font-weight:400;font-size:13px;color:#6b7280">(qtde ${licEsc(c.qt || '1')})</span></h2>
       <div class="loc">${licEsc(c.loc || '—')}</div>
       ${descComLinha(c) ? `<div class="desc">${licEsc(descComLinha(c))}</div>` : ''}
+      ${detalheTxt(c) ? `<div class="desc"><b>${licEsc(detalheTxt(c))}</b></div>` : ''}
       <div class="prev">${c.L || c.A ? `<b>${licEsc(c.L || '—')} × ${licEsc(c.A || '—')} mm</b> · ` : ''}${fin}</div></div></div>
       ${fl.length ? `<div class="exFlags">${fl.map(licEsc).join(' · ')}</div>` : ''}
       ${c.obs ? `<div class="exFlags">OBS: ${licEsc(c.obs)}</div>` : ''}
@@ -1788,8 +1817,8 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
   }
   // rótulo no topo da peça
   const finTxt = ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO';
-  const desc = descComLinha(c);
-  if (!desc) {
+  const desc = descComLinha(c), det = detalheTxt(c);
+  if (!desc && !det) {
     pg.drawText(finTxt, { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
     pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
   } else {
@@ -1797,8 +1826,15 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
     pg.drawText(finTxt, { x: 171, y: lado.y + 61, size: 10, font: negrito, color: azul });
     const larg = 405; let tam = 7.8, linhas;
     const quebra = t => { const out = []; let l = ''; for (const w of t.split(' ')) { const tl = l ? l + ' ' + w : w; if (fonte.widthOfTextAtSize(tl, tam) > larg && l) { out.push(l); l = w; } else l = tl; } if (l) out.push(l); return out; };
-    while ((linhas = quebra(desc)).length > 3 && tam > 6) tam -= 0.4;
-    linhas.slice(0, 3).forEach((l, k) => pg.drawText(l, { x: 171, y: lado.y + 50 - k * (tam + 1.6), size: tam, font: fonte, color: preto }));
+    const maxL = det ? 2 : 3;  // com o detalhe (veneziana/lambril/vidro), a descrição usa até 2 linhas e o detalhe vem embaixo
+    linhas = desc ? quebra(desc) : [];
+    while (linhas.length > maxL && tam > 6) { tam -= 0.4; linhas = quebra(desc); }
+    linhas = linhas.slice(0, maxL);
+    linhas.forEach((l, k) => pg.drawText(l, { x: 171, y: lado.y + 50 - k * (tam + 1.6), size: tam, font: fonte, color: preto }));
+    if (det) {
+      let td = 7.8; while (td > 6 && negrito.widthOfTextAtSize(det, td) > larg) td -= 0.3;
+      pg.drawText(det, { x: 171, y: lado.y + 50 - linhas.length * (tam + 1.6) - 1, size: td, font: negrito, color: preto });
+    }
     pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 17, size: 8.5, font: negrito, color: preto });
   }
   // croqui: desenho do usuário; sem desenho à mão → "CONFORME PROJETO" em letras grandes
@@ -1915,6 +1951,16 @@ function descComLinha(c) {
   const d = String((c && c.desc) || '').replace(/\s+/g, ' ').trim().toUpperCase();
   const l = String((c && c.linha) || '').replace(/\s+/g, ' ').trim().toUpperCase();
   return [d, l ? 'LINHA ' + l : ''].filter(Boolean).join(' - ');
+}
+// Detalhe da esquadria (complemento da descrição): veneziana cega/ventilada, lambril ou vidro (+ tipo do vidro)
+const DET_OPS = [['vcega', 'Veneziana cega'], ['vvent', 'Veneziana ventilada'], ['lambril', 'Lambril'], ['vidro', 'Vidro']];
+const VIDRO_OPS = [['t6', 'Temperado incolor 6mm'], ['t8', 'Temperado incolor 8mm'], ['boreal', 'Mini boreal'], ['outros', 'Outros (ver observações)']];
+function detalheTxt(c) {
+  if (!c || !c.detalhe) return '';
+  const d = DET_OPS.find(o => o[0] === c.detalhe); if (!d) return '';
+  if (c.detalhe !== 'vidro') return d[1].toUpperCase();
+  const v = VIDRO_OPS.find(o => o[0] === c.vidro);
+  return 'VIDRO' + (v ? ': ' + (c.vidro === 'outros' ? 'OUTROS (VER OBSERVAÇÕES)' : v[1].toUpperCase()) : '');
 }
 function tipoPadrao(k) { return (obra.nova ? 'CX' : 'ADC-') + String(k + 1).padStart(2, '0'); }
 
