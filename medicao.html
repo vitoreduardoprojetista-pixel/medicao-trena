@@ -137,6 +137,8 @@
   .medirMini { display: none; background: var(--brand); color: #fff; border: 0; border-radius: 9px; font-size: 15px; padding: 0 11px; }
   .medirMini.armado { background: linear-gradient(135deg, #10b981, #059669); }
   #draw.modoExtra .medirMini { display: inline-block; }
+  #labTipo { display: none !important; }
+  #draw.modoExtra #labTipo { display: flex !important; }
   #draw.modoExtra #labPeit { display: none; }  /* no item extra o peitoril vem pelas flags (alvenaria) */
   #extraFinal { display: none; background: var(--card); padding: 9px 11px; align-items: center; gap: 8px; border-top: 1px solid var(--line); }
   #draw.modoExtra #extraFinal { display: flex; }
@@ -267,6 +269,7 @@
     </div>
   </div>
   <div id="drawCampos">
+    <label id="labTipo" class="full">Tipo<input id="dcTipo" placeholder="ex.: ADC-01" autocapitalize="characters"></label>
     <label>Largura<span class="comMedir"><input id="dcL" inputmode="numeric" placeholder="ex.: 1200"><button type="button" id="dcLMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Altura<span class="comMedir"><input id="dcA" inputmode="numeric" placeholder="ex.: 1500"><button type="button" id="dcAMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
@@ -1329,7 +1332,7 @@ let drawCtx = null, desenhando = false, editIndex = null;
 let drawExtra = null;   // null = croqui/anexo normal; { ex } quando o desenho é de um item extra (ex=null se novo)
 let alvoExtra = null;   // 'L' | 'A': campo do item extra armado p/ receber a próxima medida da trena
 let drawFinalidade = 'orc';  // 'orc' | 'fab' do item extra em edição
-const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs'];
+const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs', 'dcTipo'];
 function setFinalidade(f) { drawFinalidade = f; $('finOrc').classList.toggle('on', f === 'orc'); $('finFab').classList.toggle('on', f === 'fab'); }
 function fecharModoExtra() { drawExtra = null; alvoExtra = null; $('draw').classList.remove('modoExtra'); $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado'); }
 function prepararCanvas() {
@@ -1363,6 +1366,9 @@ function abrirExtraDesenho(ex) {
   setFinalidade((ex && ex.finalidade) || 'orc');
   prepararCanvas();
   preencherCampos(ex && ex.campos);
+  // Tipo do item adicional: sugere ADC-01, ADC-02... pela ordem, mas fica editável.
+  const pos = ex ? extras.indexOf(ex) : extras.length;
+  $('dcTipo').value = (ex && ex.campos && ex.campos.tipo) || ('ADC-' + String((pos < 0 ? extras.length : pos) + 1).padStart(2, '0'));
   $('draw').style.display = 'flex';
   if (ex && ex.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = ex.base; }
 }
@@ -1381,7 +1387,7 @@ function posCanvas(ev) {
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
 function lerCamposDesenho() {
-  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim() };
+  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase() };
 }
 // Monta a imagem final: cabeçalho com os campos digitados + o desenho (base) embaixo.
 function comporDesenho(base, campos) {
@@ -1466,7 +1472,7 @@ function desenharExtras() {
   extras.forEach((ex, k) => {
     const c = ex.campos || {};
     const fin = ex.finalidade === 'fab' ? 'fabric.' : 'orçam.';
-    const legenda = (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '') + ` · ${fin}`;
+    const legenda = (c.tipo || 'ADC-' + String(k + 1).padStart(2, '0')) + ' · ' + (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '') + ` · ${fin}`;
     const nf = flagsResumo(ex.id).length;
     const d = document.createElement('div');
     d.className = 'extraThumb';
@@ -1607,7 +1613,7 @@ async function gerarPdf() {
         for (let s = 0; s < slots.length; s++) {
           const ex = extras[g + s];
           if (!ex) { taparSlot(copiada, slots[s]); continue; }
-          await carimbarExtra(copiada, slots[s], ex);
+          await carimbarExtra(copiada, slots[s], ex, g + s);
         }
       }
       // Reposiciona a assinatura: apaga da página da última esquadria e põe numa página só dela,
@@ -1641,21 +1647,35 @@ async function gerarPdf() {
     return { pagina: escolhida, slots, temCabecalhoObra: escolhida === primeira };
   }
 
+  // true se o desenho à mão está em branco (nenhum traço escuro)
+  async function desenhoVazio(dataUrl) {
+    try {
+      const img = await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = dataUrl; });
+      const cv = document.createElement('canvas'); cv.width = 125; cv.height = 177;
+      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      cx.drawImage(img, 0, 0, cv.width, cv.height);
+      const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+      for (let i = 0; i < d.length; i += 4) if (d[i] < 200 || d[i + 1] < 200 || d[i + 2] < 200) return false;
+      return true;
+    } catch (e) { return false; }
+  }
   // Carimba um item extra no slot (geometria de um item real) de uma página-molde clonada.
-  async function carimbarExtra(pg, slot, ex) {
+  async function carimbarExtra(pg, slot, ex, idx) {
     const sec = slot.sec, cols = slot.cols;
+    const tipo = ((ex.campos && ex.campos.tipo) || ('ADC-' + String((idx || 0) + 1).padStart(2, '0'))).slice(0, 12); // editável; padrão ADC-NN
     const lado = sec['LADO DE ABERTURA'], tipoT = sec['TIPO DE TRILHO'] || { x: 18.8, y: lado.y - 61 };
     const c = ex.campos || {}, esc = ex.escopo || escopo;
     // máscaras: apaga o texto do orçamento do molde
     pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
     const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 92;
     pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
+    let budgetY = null;
     if (slot.unidades.length) {
       // Apaga só o TEXTO do "previsto" do molde (linha logo acima da 1ª linha de medida) e o eco do
       // tipo nas linhas de medida, com retângulos estreitos POR CÉLULA — sem encostar nas bordas da
       // tabela (se cobrir as bordas, a grade some e parece "cortado").
       const uys = slot.unidades.map(u => u.y);
-      const budgetY = Math.max(...uys) + 19.8; // altura de linha do modelo FastReport
+      budgetY = Math.max(...uys) + 19.8; // altura de linha do modelo FastReport
       const limpa = (x1, x2, y) => pg.drawRectangle({ x: x1, y: y - 3, width: x2 - x1, height: 11, color: branco });
       limpa(33, 78, budgetY);                        // TIPO
       limpa(83, 113, budgetY);                       // QTDE
@@ -1668,9 +1688,13 @@ async function gerarPdf() {
     }
     // rótulo no topo da peça
     pg.drawText(ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO', { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
-    pg.drawText('INCLUSÃO' + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
-    // croqui: desenho do usuário
-    if (ex.base) {
+    pg.drawText(tipo + (c.loc ? ' — ' + c.loc : ''), { x: 171, y: lado.y + 34, size: 10, font: fonte, color: preto });
+    // croqui: desenho do usuário; sem desenho à mão → "CONFORME PROJETO" em letras grandes
+    if (!ex.base || await desenhoVazio(ex.base)) {
+      const cx = (cqX + cqX1) / 2, cy = (cqYb + cqYt) / 2, tam = 18;
+      centro(pg, 'CONFORME', negrito, tam, cx, cy + 4, preto);
+      centro(pg, 'PROJETO', negrito, tam, cx, cy - tam - 2, preto);
+    } else {
       try {
         const img = await doc.embedPng(dataUrlParaBytes(ex.base));
         const maxW = cqX1 - cqX - 4, maxH = cqYt - cqYb - 4;
@@ -1686,14 +1710,24 @@ async function gerarPdf() {
       if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.cmH, un0.y, azul);
       if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), negrito, 9, cols.esL, un0.y, azul);
       if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), negrito, 9, cols.esH, un0.y, azul);
-      if (c.qt) centro(pg, String(c.qt), fonte, 9, 98, un0.y, preto);
-      if (c.loc) centro(pg, String(c.loc), fonte, 8, (cols.cmD + cols.esL) / 2, un0.y, preto);
+      centro(pg, tipo, fonte, 8, 55.5, un0.y, preto);  // eco do tipo na linha de medida (como no caderno)
       un0.datas.forEach((d, k) => {
         const mostra = k === 0 ? (esc === 'cm' || esc === 'ambos') : (esc === 'es' || esc === 'ambos');
         if (!mostra) return;
         pg.drawRectangle({ x: d.x - 1, y: d.y - 2, width: d.w + 2, height: d.h + 3, color: branco });
         centro(pg, hoje, fonte, 7, d.x + d.w / 2, d.y, azul);
       });
+    }
+    // linha do "previsto" (orçamento): como a peça é nova, repete a medida coletada em PRETO,
+    // no mesmo visual do caderno (tipo, qtde, medidas e localização); a coleta fica embaixo em azul.
+    if (budgetY != null) {
+      centro(pg, tipo, fonte, 8, 55.5, budgetY, preto);
+      if (c.qt) centro(pg, String(c.qt), fonte, 8, 98, budgetY, preto);
+      if (c.L && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.cmL, budgetY, preto);
+      if (c.A && (esc === 'cm' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.cmH, budgetY, preto);
+      if (c.L && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.L), fonte, 8, cols.esL, budgetY, preto);
+      if (c.A && (esc === 'es' || esc === 'ambos')) centro(pg, String(c.A), fonte, 8, cols.esH, budgetY, preto);
+      if (c.loc) centro(pg, String(c.loc).slice(0, 40), fonte, 7, (259 + cols.esL - 20) / 2, budgetY, preto);
     }
     // OBS
     if (c.obs && slot.obsPos) pg.drawText(String(c.obs).replace(/\s+/g, ' ').slice(0, 95), { x: slot.obsPos.x, y: slot.obsPos.y, size: 8, font: fonte, color: azul });
