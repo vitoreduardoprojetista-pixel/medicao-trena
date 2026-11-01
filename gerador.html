@@ -51,6 +51,15 @@
   #qr { display: inline-block; background: #fff; padding: 12px; border-radius: 14px; box-shadow: var(--shadow); }
   #qr img, #qr canvas { display: block; }
   #qrtempo { margin-top: 10px; font-weight: 800; color: var(--brand-ink); }
+  .cliRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 0; border-top: 1px solid var(--line2); }
+  .cliRow:first-child { border-top: 0; }
+  .cliInfo { display: flex; flex-direction: column; gap: 3px; font-size: 13px; min-width: 0; }
+  .cliInfo b { font-size: 14px; color: var(--ink); }
+  .cliInfo span { color: var(--muted); }
+  .cliBtns { display: flex; gap: 6px; flex: 0 0 auto; }
+  button.mini { width: auto; margin: 0; padding: 8px 11px; font-size: 12px; border-radius: 9px; }
+  .pill.warn { background: #fff7ed; color: #9a3412; }
+  #listaClientes:empty::before { content: ""; }
 </style>
 </head>
 <body>
@@ -107,6 +116,11 @@
   <button id="compartilhar" class="sec">Compartilhar…</button>
 </div>
 
+<div class="card" id="cardClientes" style="display:none">
+  <h2>Clientes e vencimentos</h2>
+  <div id="listaClientes"></div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
@@ -129,6 +143,33 @@ function iniciarContagem(act) {
 }
 
 function fmtData(d) { return d.toLocaleDateString('pt-BR'); }
+function fmtIso(iso) { const p = String(iso).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso; }
+function escHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// Registro de clientes e vencimentos (fica salvo neste aparelho).
+function lerClientes() { try { return JSON.parse(localStorage.getItem('gerador_clientes') || '[]'); } catch (e) { return []; } }
+function salvarClientes(a) { try { localStorage.setItem('gerador_clientes', JSON.stringify(a)); } catch (e) { } }
+function registrarCliente(nome, exp) {
+  if (!nome || nome === '-') return;        // só registra quando você dá um nome
+  const a = lerClientes();
+  const i = a.findIndex(c => c.nome.toLowerCase() === nome.toLowerCase());
+  const rec = { id: (i >= 0 ? a[i].id : Math.random().toString(36).slice(2, 9)), nome, exp, em: new Date().toISOString().slice(0, 10) };
+  if (i >= 0) a[i] = rec; else a.push(rec);
+  salvarClientes(a); renderClientes();
+}
+function renderClientes() {
+  const el = $('listaClientes'); if (!el) return;
+  const a = lerClientes();
+  if (!a.length) { el.innerHTML = '<p class="ajuda">Nenhum cliente registrado ainda. Cada cliente aparece aqui quando você gera um QR com um nome.</p>'; return; }
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  a.sort((x, y) => x.exp < y.exp ? -1 : x.exp > y.exp ? 1 : 0);
+  el.innerHTML = a.map(c => {
+    const dias = Math.round((new Date(c.exp + 'T00:00:00') - hoje) / 86400000);
+    const st = dias < 0 ? 'no' : dias <= 15 ? 'warn' : 'ok';
+    const txt = dias < 0 ? 'vencido' : dias === 0 ? 'vence hoje' : 'faltam ' + dias + ' dia' + (dias === 1 ? '' : 's');
+    return '<div class="cliRow"><div class="cliInfo"><b>' + escHtml(c.nome) + '</b><span>vence ' + fmtIso(c.exp) + ' · <span class="pill ' + st + '">' + txt + '</span></span></div><div class="cliBtns"><button class="mini" data-reissue="' + c.id + '">Novo QR</button><button class="mini sec" data-del="' + c.id + '">✕</button></div></div>';
+  }).join('');
+}
 
 async function carregarSegredo() {
   let jwk = null;
@@ -140,6 +181,8 @@ async function carregarSegredo() {
     $('pedeSegredo').style.display = 'none';
     $('trocarSegredo').style.display = 'block';
     $('cardGerar').style.display = 'block';
+    $('cardClientes').style.display = 'block';
+    renderClientes();
   } catch (e) { mostrarSemSegredo(); }
 }
 function mostrarSemSegredo() {
@@ -148,6 +191,7 @@ function mostrarSemSegredo() {
   $('pedeSegredo').style.display = 'block';
   $('trocarSegredo').style.display = 'none';
   $('cardGerar').style.display = 'none';
+  $('cardClientes').style.display = 'none';
   $('saida').style.display = 'none';
 }
 
@@ -211,6 +255,7 @@ $('gerar').onclick = async () => {
   try { new QRCode(cont, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); }
   catch (e) { cont.textContent = 'Não consegui desenhar o QR, mas o link abaixo funciona.'; }
   iniciarContagem(act);
+  registrarCliente(payload.n, exp);          // guarda/atualiza o vencimento do cliente
   $('saida').style.display = 'block';
   $('saida').scrollIntoView({ behavior: 'smooth', block: 'start' });
   msg.classList.add('ok'); msg.textContent = 'QR criado abaixo.';
@@ -224,6 +269,21 @@ $('compartilhar').onclick = async () => {
   const texto = 'Ative o aplicativo de medição escaneando o QR ou abrindo este link (vale 10 min):\n\n' + $('chaveOut').value;
   if (navigator.share) { try { await navigator.share({ text: texto }); } catch (e) { } }
   else { try { await navigator.clipboard.writeText(texto); $('compartilhar').textContent = 'Copiado! ✓'; setTimeout(() => $('compartilhar').textContent = 'Compartilhar…', 1500); } catch (e) { } }
+};
+
+$('listaClientes').onclick = e => {
+  const re = e.target.closest('[data-reissue]'), de = e.target.closest('[data-del]');
+  if (re) {
+    const c = lerClientes().find(x => x.id === re.dataset.reissue); if (!c) return;
+    $('nome').value = c.nome;
+    document.querySelector('#modo button[data-m="data"]').click();   // modo por data
+    $('dataVenc').value = c.exp;
+    $('gerar').click();                                              // gera o QR novo com a mesma data
+  } else if (de) {
+    if (!confirm('Remover este cliente da lista? (não afeta o app dele)')) return;
+    salvarClientes(lerClientes().filter(x => x.id !== de.dataset.del));
+    renderClientes();
+  }
 };
 
 carregarSegredo();
