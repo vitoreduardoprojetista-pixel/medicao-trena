@@ -30,6 +30,8 @@
   .opcao .tit { font-size: 17px; font-weight: 800; line-height: 1.25; }
   .opcao .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
   .opcao .seta { margin-left: auto; font-size: 26px; color: #c4c8d6; }
+  .instalar { margin-top: 4px; border: 0; border-radius: 16px; padding: 16px; font: inherit; font-size: 16px; font-weight: 800; color: #fff; background: var(--grad); box-shadow: var(--shadow-lg); }
+  .dica { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 </style>
 </head>
 <body>
@@ -62,9 +64,22 @@
     </div>
     <div class="seta">›</div>
   </a>
+  <button id="instalar" class="instalar" hidden>📲 Instalar o app no celular</button>
+  <p id="dicaInstalar" class="dica" hidden>Para instalar: no Chrome, toque no menu <b>⋮</b> e depois em <b>Instalar app</b> (ou "Adicionar à tela inicial").</p>
 </main>
 <script>
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+// Instalar como app (ícone na tela do celular, abre em tela cheia, sem barra do navegador)
+const instalado = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+let pedidoInstalar = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedidoInstalar = e; document.getElementById('instalar').hidden = false; document.getElementById('dicaInstalar').hidden = true; });
+document.getElementById('instalar').onclick = async () => {
+  if (!pedidoInstalar) return;
+  pedidoInstalar.prompt(); await pedidoInstalar.userChoice.catch(() => { }); pedidoInstalar = null;
+  document.getElementById('instalar').hidden = true;
+};
+window.addEventListener('appinstalled', () => { document.getElementById('instalar').hidden = true; document.getElementById('dicaInstalar').hidden = true; });
+if (!instalado) setTimeout(() => { if (!pedidoInstalar) document.getElementById('dicaInstalar').hidden = false; }, 2500);
 </script>
 </body>
 </html>
