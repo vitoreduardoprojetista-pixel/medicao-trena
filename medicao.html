@@ -209,6 +209,7 @@
   body.mSem #extraFinal, body.mSem #btnAbrir { display: none !important; }
   body.mCad #btnNovaObra { display: none; }
   body.mOrc [data-flg] { display: none; }
+  body.mOrc #escopoBar { display: none !important; }
   #extraFinal > span { font-size: 13px; color: var(--muted); font-weight: 600; }
   #extraFinal .fin { font-size: 13px; padding: 8px 12px; background: #e5e7eb; color: #111; }
   #extraFinal .fin.on { background: var(--brand); color: #fff; }
@@ -2197,11 +2198,12 @@ function iniciarNovaObra(d) {
   pdfBytes = null; pdfDoc = null; croquiCache = {}; itens = []; assinatura = null;
   medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; extras = []; ativo = null;
   carregarSalvo();
+  if (MODO === 'orc') escopo = 'es'; // medição comercial: sempre só esquadrias (sem contramarco)
   const l = listaNovas().filter(o => o.os !== d.os); l.unshift(Object.assign({}, d, { em: Date.now() })); gravarJson(NOVA_LISTA, l);
   salvar();
   $('nova').style.display = 'none'; $('barra').style.display = 'none';
   desenharTudo();
-  status((MODO === 'orc' ? 'Medição comercial ' : 'Obra ') + d.os + ': escolha o que vai medir e inclua cada esquadria.');
+  status(MODO === 'orc' ? 'Medição comercial ' + d.os + ': inclua cada esquadria.' : 'Obra ' + d.os + ': escolha o que vai medir e inclua cada esquadria.');
   $('obra').scrollIntoView({ block: 'start' });
 }
 

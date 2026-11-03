@@ -1,5 +1,5 @@
 /* Cache do app para funcionar sem internet depois da 1ª abertura */
-const CACHE = 'medicao-trena-v40';
+const CACHE = 'medicao-trena-v41';
 const SHELL = ['./', 'index.html', 'medicao.html', 'tuya.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
