@@ -1893,10 +1893,8 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
   pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
   const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 71;
   pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
-  if (MODO === 'orc' && slot.obsPos) { // medição comercial: sem flags no quadro (só croqui, descrição e medidas)
-    const yF = slot.obsPos.y + 12;
-    pg.drawRectangle({ x: lado.x - 5, y: yF, width: 583 - (lado.x - 5), height: lado.y + 10 - yF, color: branco });
-    pg.drawRectangle({ x: cqX, y: yF, width: lado.x - 3 - cqX, height: cqYb - yF + 1, color: branco });
+  if (MODO === 'orc' && slot.obsPos) { // medição comercial: sem flags (a faixa de baixo já sai cortada em empilharItens)
+    pg.drawRectangle({ x: lado.x - 5, y: cqYb, width: 583 - (lado.x - 5), height: lado.y + 10 - cqYb, color: branco });
   }
   let budgetY = null;
   if (uT) {
@@ -2002,14 +2000,21 @@ async function empilharItens(K, srcPg, st, lista, novaPagina, inicio) {
   const pA = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - 1, top: topoRel });
   const pR = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: uT.y - 9.9, top: uT.y + 12.1 });
   const pS = await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - SEP, top: rowB + 1 });
-  const hBase = topoRel - rowB + SEP, MAXN = Math.max(1, Math.floor((PH - 70 - hBase) / PASSO) + 1);
+  // proposta comercial (sem flags): corta a faixa das flags e sobe OBS + tabela para junto do croqui
+  const tipoTY = (st.sec['TIPO DE TRILHO'] || { y: ladoY - 61 }).y;
+  const corte = MODO === 'orc' && st.obsPos ? { yCt: tipoTY + 8, yCb: st.obsPos.y + 12 } : null;
+  const G = corte ? corte.yCt - corte.yCb : 0;
+  const pA1 = corte ? await doc.embedPage(srcPg, { left: 0, right: PW, bottom: corte.yCt, top: topoRel }) : null;
+  const pA2 = corte ? await doc.embedPage(srcPg, { left: 0, right: PW, bottom: rowB - 1, top: corte.yCb }) : null;
+  const hBase = topoRel - rowB + SEP - G, MAXN = Math.max(1, Math.floor((PH - 70 - hBase) / PASSO) + 1);
   const TOPO = Math.min(PH - 28, topoRel), BASE = 36;
   // desloca tudo que carimbarExtra desenha em dy (coordenadas do carimbo -> posição na página)
+  const Y = (y, dy) => y + dy + (corte && y < corte.yCt ? G : 0); // abaixo do corte sobe G
   const mover = (pg, dy) => ({
-    drawRectangle: o => pg.drawRectangle({ ...o, y: o.y + dy }),
-    drawText: (t, o) => pg.drawText(t, { ...o, y: o.y + dy }),
-    drawImage: (i, o) => pg.drawImage(i, { ...o, y: o.y + dy }),
-    drawLine: o => pg.drawLine({ ...o, start: { x: o.start.x, y: o.start.y + dy }, end: { x: o.end.x, y: o.end.y + dy } })
+    drawRectangle: o => pg.drawRectangle({ ...o, y: Y(o.y, dy) }),
+    drawText: (t, o) => pg.drawText(t, { ...o, y: Y(o.y, dy) }),
+    drawImage: (i, o) => pg.drawImage(i, { ...o, y: Y(o.y, dy) }),
+    drawLine: o => pg.drawLine({ ...o, start: { x: o.start.x, y: Y(o.start.y, dy) }, end: { x: o.end.x, y: Y(o.end.y, dy) } })
   });
   let pg = inicio ? inicio.pg : null, cursor = inicio ? inicio.cursor : 0;
   for (let e = 0; e < lista.length; e++) {
@@ -2019,9 +2024,10 @@ async function empilharItens(K, srcPg, st, lista, novaPagina, inicio) {
     const h = hBase + (n - 1) * PASSO;
     if (!pg || cursor - h < BASE) { pg = novaPagina(); cursor = TOPO; }
     const dy = cursor - topoRel;
-    pg.drawPage(pA, { x: 0, y: rowB - 1 + dy });
-    for (let k = 1; k < n; k++) pg.drawPage(pR, { x: 0, y: uT.y - 9.9 - k * PASSO + dy });
-    pg.drawPage(pS, { x: 0, y: rowB - SEP - (n - 1) * PASSO + dy });
+    if (corte) { pg.drawPage(pA1, { x: 0, y: corte.yCt + dy }); pg.drawPage(pA2, { x: 0, y: rowB - 1 + dy + G }); }
+    else pg.drawPage(pA, { x: 0, y: rowB - 1 + dy });
+    for (let k = 1; k < n; k++) pg.drawPage(pR, { x: 0, y: uT.y - 9.9 - k * PASSO + dy + G });
+    pg.drawPage(pS, { x: 0, y: rowB - SEP - (n - 1) * PASSO + dy + G });
     await carimbarExtra(K, mover(pg, dy), st, ex, e, n);
     cursor -= h;
   }
@@ -2228,7 +2234,8 @@ async function gerarCadernoNovo() {
   const capaTir = limparPagina(dCapa, dCapa.getPage(0), (x, y) => naFaixa(capaV, x, y) || perto(T[0].filter(t => ehNumPag(t.s)), x, y) || perto(capaTitT, x, y));
   // cabeçalho da obra: fica só o que está acima do 1º item (rótulos sem valor); o resto da página sai
   const cabT = T[hp].filter(t => t.y > it0top), cabV = valoresDe(cabT);
-  const cabTir = limparPagina(dCab, dCab.getPage(hp), (x, y) => y <= it0top || naFaixa(cabV, x, y), (e, f) => f < it0top);
+  const cabTitT = MODO === 'orc' ? cabT.filter(t => /^(RELAÇÃO DE ITENS PARA|MEDIÇÃO DE ESQUADRIAS E CONTRAMARCOS)$/i.test(t.s.trim())) : [];
+  const cabTir = limparPagina(dCab, dCab.getPage(hp), (x, y) => y <= it0top || naFaixa(cabV, x, y) || perto(cabTitT, x, y), (e, f) => f < it0top);
   // carimbo do quadro: tira descrição, croqui, valores da tabela e tudo que estiver fora do bloco do item
   const lado = st.sec['LADO DE ABERTURA'], uT = st.unidades.reduce((a, u) => (u.y > a.y ? u : a)), uB = st.unidades.reduce((a, u) => (u.y < a.y ? u : a));
   const topoB = lado.y + 73, baseB = uB.y - 8.9 - 16, budgetY = uT.y + 19.8;
@@ -2283,6 +2290,16 @@ async function gerarCadernoNovo() {
   pg.drawPage(await out.embedPage(dCab.getPage(hp), { left: 0, right: PW, bottom: it0top, top: PH }), { x: 0, y: it0top });
   const cabVals = { 'CONST.:': o.cliente, 'OBRA:': o.obra || o.cliente, 'BAIRRO:': o.bairro, 'ENDEREÇO:': o.end, 'O.S.:': o.os, 'TEL.:': o.tel, 'CIDADE:': o.cidade, 'VENDEDOR:': o.vendedor, 'TRAT.:': o.trat, 'UF:': o.uf, 'COMPL.:': o.compl };
   for (const rot in cabVals) escrever(pg, cabV, cabTir, rot, cabVals[rot], PW - 4);
+  if (cabTitT.length) { // proposta comercial: "PROPOSTA COMERCIAL / DE ESQUADRIAS" no lugar do título do caderno
+    const fIt = await out.embedFont(StandardFonts.HelveticaBoldOblique);
+    const cx = cabTitT.reduce((a, t) => a + t.x + t.w / 2, 0) / cabTitT.length;
+    ['PROPOSTA COMERCIAL', 'DE ESQUADRIAS'].forEach((txt, k) => {
+      const t = cabTitT.slice().sort((a, b) => b.y - a.y)[Math.min(k, cabTitT.length - 1)];
+      const orig = cabTir.filter(o => Math.abs(o.y - t.y) < 1)[0];
+      const tam = orig ? orig.tam : t.tam;
+      pg.drawText(txt, { x: cx - fIt.widthOfTextAtSize(txt, tam) / 2, y: t.y, size: tam, font: fIt, color: orig ? orig.cor : preto });
+    });
+  }
   const em = cabV.rots.find(t => t.s === 'EMITIDO POR:');
   if (em) { // EMITIDO POR: <quem>  ...  <data>  <hora>
     const lin = cabTir.filter(t => Math.abs(t.y - em.y) < 2 && t.x > em.x).sort((a, b) => a.x - b.x);
@@ -2303,7 +2320,7 @@ async function gerarCadernoNovo() {
     pa.drawPage(await out.embedPage(dAss.getPage(ap), { left: 0, right: PW, bottom: yA - 20, top: yA + 70 }), { x: 0, y: yTop - 90 });
   }
   // 6) páginas finais do modelo (informações complementares, anotações)
-  if (finais.length) (await out.copyPages(dFim, finais)).forEach(p => out.addPage(p));
+  if (finais.length && MODO !== 'orc') (await out.copyPages(dFim, finais)).forEach(p => out.addPage(p)); // proposta comercial: sem essas páginas
   // 7) numeração "N / total" no mesmo lugar e estilo do caderno (a capa não tem número)
   let np = null; for (const l of T) { np = l.find(t => ehNumPag(t.s)); if (np) break; }
   const total = out.getPageCount();
