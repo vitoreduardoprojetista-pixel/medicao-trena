@@ -196,6 +196,9 @@
   #draw.modoExtra #labPeit { display: none; }  /* no item extra o peitoril vem pelas flags (alvenaria) */
   #extraFinal { display: none; background: var(--card); padding: 9px 11px; align-items: center; gap: 8px; border-top: 1px solid var(--line); }
   #draw.modoExtra #extraFinal { display: flex; }
+  body.mSem #extraFinal, body.mSem #btnAbrir { display: none !important; }
+  body.mCad #btnNovaObra { display: none; }
+  body.mOrc [data-flg] { display: none; }
   #extraFinal > span { font-size: 13px; color: var(--muted); font-weight: 600; }
   #extraFinal .fin { font-size: 13px; padding: 8px 12px; background: #e5e7eb; color: #111; }
   #extraFinal .fin.on { background: var(--brand); color: #fff; }
@@ -255,7 +258,7 @@
   <button id="btnBosch">Conectar Bosch</button>
   <button id="btnTrocarTrena">Conectar outra trena</button>
   <button id="btnAbrir">Abrir caderno</button>
-  <button id="btnNovaObra" class="novaBtn">📝 Medição de nova obra</button>
+  <button id="btnNovaObra" class="novaBtn">📝 Nova obra ou continuar</button>
 </div>
 <input type="file" id="arquivo" accept="application/pdf">
 <div id="obra"></div>
@@ -397,7 +400,7 @@
 
 <!-- Medição de nova obra: caderno do zero (dados do cliente/obra) -->
 <div id="nova">
-  <div id="novaTopo"><span>📝 Medição de nova obra</span><button id="novaFechar" class="sec">Fechar</button></div>
+  <div id="novaTopo"><span id="novaTopoTit">📝 Obra sem caderno (fabricação)</span><button id="novaFechar" class="sec">Fechar</button></div>
   <div id="novaCorpo">
     <div id="novaLista"></div>
     <div class="item" style="margin:0">
@@ -650,7 +653,21 @@ function campos() {
 }
 const nomeCampo = c => (CAMPOS_TODOS.find(x => x[0] === c) || [c, c])[1];
 
-function chaveObra() { return 'medicao_' + (obra.nova ? 'nova_' : '') + (obra.os || nomeArquivo); }
+// Modo vem da tela inicial: medicao.html (caderno padrão), ?modo=fab (obra sem caderno, para fabricação)
+// ou ?modo=orc (medição comercial, para orçamento, sem flags).
+const MODO = (() => { const m = new URLSearchParams(location.search).get('modo'); return m === 'fab' || m === 'orc' ? m : 'cad'; })();
+const NOVA_LISTA = MODO === 'orc' ? 'novas_orc' : 'novas_obras';
+const NOVA_PREF = MODO === 'orc' ? 'medicao_orc_' : 'medicao_nova_';
+(function aplicarModo() {
+  document.body.classList.add(MODO === 'cad' ? 'mCad' : 'mSem', MODO === 'orc' ? 'mOrc' : 'mFab');
+  const t = { cad: 'Caderno padrão', fab: 'Obra sem caderno', orc: 'Medição comercial' }[MODO];
+  if (MODO === 'orc') $('novaTopoTit').textContent = '📝 Medição comercial (orçamento)';
+  document.querySelector('.h1t').textContent = t; document.title = t + ' · Medição de Esquadrias';
+  $('status').textContent = MODO === 'cad'
+    ? '1) Conecte a trena. 2) Abra o caderno de medição (PDF do CEM). 3) Toque num campo e meça.'
+    : '1) Conecte a trena. 2) Preencha os dados do cliente e da obra. 3) Inclua cada esquadria e meça.';
+})();
+function chaveObra() { return obra.nova ? NOVA_PREF + obra.os : 'medicao_' + (obra.os || nomeArquivo); }
 function salvar() {
   try { localStorage.setItem(chaveObra(), JSON.stringify({ medidas, obs, flags, escopo, anexos, ordem: ordemIds, extras, dados: obra.nova ? obra : undefined })); } catch (e) { }
 }
@@ -846,11 +863,11 @@ function nMarcadas(i) { const f = flags[itens[i].id] || {}; return Object.keys(f
 function desenharTudo() {
   const tem = itens.length > 0 || !!obra.nova;
   $('obra').style.display = tem ? 'block' : 'none';
-  $('obra').innerHTML = (obra.nova ? '<div class="novaTag">OBRA NOVA · caderno do zero</div>' : '') +
+  $('obra').innerHTML = (obra.nova ? '<div class="novaTag">' + (MODO === 'orc' ? 'COMERCIAL · para orçamento' : 'SEM CADERNO · para fabricação') + '</div>' : '') +
     `<b>O.S. ${licEsc(obra.os || '')}</b> · ${licEsc(obra.cliente || '')}<br>${licEsc(obra.obra || '')}<br><span style="color:#6b7280">${licEsc(obra.end || '')}</span>` +
     (obra.nova ? '<button id="btnEditarObra" class="sec">✎ Dados da obra</button>' : '');
   if (obra.nova) $('btnEditarObra').onclick = () => abrirNovaObra(obra);
-  $('btnGerar').textContent = obra.nova ? 'Gerar caderno' : 'Gerar PDF preenchido';
+  $('btnGerar').textContent = obra.nova ? (MODO === 'orc' ? 'Gerar medição comercial' : 'Gerar caderno') : 'Gerar PDF preenchido';
   $('escopoBar').style.display = tem ? 'block' : 'none';
   $('acoesFim2').style.display = tem ? 'flex' : 'none';
   $('btnReordenar').style.display = (tem && itens.length > 1) ? 'block' : 'none';
@@ -862,7 +879,7 @@ function desenharTudo() {
   const box = $('itens');
   box.innerHTML = '';
   if (!escopo) { box.innerHTML = tem ? '<div class="item" style="color:#6b7280">Escolha acima: <b>Esquadrias</b>, <b>Contramarcos</b> ou <b>Os dois</b> para começar a medir.</div>' : ''; return; }
-  if (obra.nova && !extras.length) box.innerHTML = '<div class="item" style="color:#6b7280">Toque em <b>➕ Incluir esquadria</b> (logo abaixo) para cada esquadria da obra: desenho ou "conforme projeto", medidas e flags, igual ao caderno.</div>';
+  if (obra.nova && !extras.length) box.innerHTML = '<div class="item" style="color:#6b7280">Toque em <b>➕ Incluir esquadria</b> (logo abaixo) para cada esquadria da obra: desenho ou "conforme projeto", medidas' + (MODO === 'orc' ? '' : ' e flags') + ', igual ao caderno.</div>';
   const CPS = campos();
   itens.forEach((it, i) => {
     const d = document.createElement('div');
@@ -1521,7 +1538,7 @@ function abrirExtraDesenho(ex) {
   $('draw').classList.add('modoExtra');
   $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado');
   $('drawTitulo').textContent = obra.nova ? (ex ? 'Editar esquadria' : 'Nova esquadria') : (ex ? 'Editar item extra' : 'Novo item extra');
-  setFinalidade((ex && ex.finalidade) || 'orc');
+  setFinalidade(MODO === 'cad' ? ((ex && ex.finalidade) || 'orc') : MODO);
   prepararCanvas();
   preencherCampos(ex && ex.campos);
   // Tipo do item adicional: sugere ADC-01, ADC-02... pela ordem, mas fica editável.
@@ -1591,6 +1608,7 @@ $('drawSalvar').onclick = () => {
     fecharModoExtra();
     $('draw').style.display = 'none';
     salvarComAviso(); desenharExtras();
+    if (MODO === 'orc') { delete flags[ex.id]; salvar(); status('Esquadria salva.'); return; } // comercial: sem flags
     abrirWizardExtra(ex);   // na sequência, as flags (iguais às da esquadria/contramarco)
     return;
   }
@@ -1660,7 +1678,7 @@ function desenharCartoesObra(g) {
   extras.forEach((ex, k) => {
     const c = ex.campos || {}, tipo = c.tipo || tipoPadrao(k);
     const fin = ex.finalidade === 'fab' ? 'Para fabricação' : 'Para orçamento';
-    const fl = flagsResumo(ex.id);
+    const fl = MODO === 'orc' ? [] : flagsResumo(ex.id);
     const d = document.createElement('div');
     d.className = 'item exCard';
     d.innerHTML = `<div class="exTopo"><span class="exNum">${k + 1}</span>
@@ -1920,7 +1938,7 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
   // OBS
   if (c.obs && slot.obsPos) pg.drawText(String(c.obs).replace(/\s+/g, ' ').slice(0, 95), { x: slot.obsPos.x, y: slot.obsPos.y, size: 8, font: fonte, color: azul });
   // flags (mesmo esquema dos itens reais); peitoril vem só pelas flags (alvenaria)
-  const f = flags[ex.id] || {};
+  const f = (MODO === 'orc' ? null : flags[ex.id]) || {};
   for (const fid of Object.keys(f)) {
     if (!f[fid]) continue;
     const fsec = FLAG_SEC[fid]; if (!fsec) continue;
@@ -2016,7 +2034,7 @@ const NOVA_CAMPOS = [
   ['vendedor', 'Vendedor'], ['emitido', 'Emitido por'], ['trat', 'Tratamento / cor', 'full']
 ];
 let novaEditando = null; // obra nova em edição (dados) ou null para uma nova
-function listaNovas() { return lerJson('novas_obras') || []; }
+function listaNovas() { return lerJson(NOVA_LISTA) || []; }
 function abrirNovaObra(edit) {
   novaEditando = edit && edit.nova ? edit : null;
   const l = listaNovas();
@@ -2026,8 +2044,8 @@ function abrirNovaObra(edit) {
   $('novaLista').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     const o = listaNovas()[+b.dataset.del]; if (!o) return;
     if (!await confirmar('Apagar a obra nova ' + o.os + ' (medidas, desenhos e flags) deste celular?', 'Apagar')) return;
-    try { localStorage.removeItem('medicao_nova_' + o.os); } catch (e) { }
-    gravarJson('novas_obras', listaNovas().filter(x => x.os !== o.os)); abrirNovaObra();
+    try { localStorage.removeItem(NOVA_PREF + o.os); } catch (e) { }
+    gravarJson(NOVA_LISTA, listaNovas().filter(x => x.os !== o.os)); abrirNovaObra();
   });
   const v = novaEditando || { emitido: lerJson('nova_emitido') || '', os: 'N' + String(l.length + 1).padStart(3, '0') };
   $('novaFormTit').textContent = novaEditando ? 'Editar dados da obra' : 'Dados do cliente e da obra';
@@ -2038,6 +2056,7 @@ function abrirNovaObra(edit) {
   $('nova').style.display = 'flex';
 }
 $('btnNovaObra').onclick = () => abrirNovaObra();
+if (MODO !== 'cad') setTimeout(() => { if (!obra.nova) abrirNovaObra(); }, 0); // obra sem caderno / comercial: já abre o cadastro
 $('novaFechar').onclick = () => { $('nova').style.display = 'none'; };
 $('novaOk').onclick = () => {
   const d = {};
@@ -2048,8 +2067,8 @@ $('novaOk').onclick = () => {
   if (!antiga && listaNovas().some(o => o.os === d.os)) { $('novaMsg').textContent = 'Já existe uma obra nova com a O.S. ' + d.os + '. Use outro número ou continue a existente acima.'; return; }
   if (d.emitido) gravarJson('nova_emitido', d.emitido);
   if (antiga && antiga.os !== d.os) { // trocou a O.S.: leva os dados para a chave nova
-    try { const v = localStorage.getItem('medicao_nova_' + antiga.os); if (v) localStorage.setItem('medicao_nova_' + d.os, v); localStorage.removeItem('medicao_nova_' + antiga.os); } catch (e) { }
-    gravarJson('novas_obras', listaNovas().filter(x => x.os !== antiga.os));
+    try { const v = localStorage.getItem(NOVA_PREF + antiga.os); if (v) localStorage.setItem(NOVA_PREF + d.os, v); localStorage.removeItem(NOVA_PREF + antiga.os); } catch (e) { }
+    gravarJson(NOVA_LISTA, listaNovas().filter(x => x.os !== antiga.os));
   }
   iniciarNovaObra(d);
 };
@@ -2059,11 +2078,11 @@ function iniciarNovaObra(d) {
   pdfBytes = null; pdfDoc = null; croquiCache = {}; itens = []; assinatura = null;
   medidas = {}; obs = {}; flags = {}; escopo = null; anexos = []; ordemIds = []; extras = []; ativo = null;
   carregarSalvo();
-  const l = listaNovas().filter(o => o.os !== d.os); l.unshift(Object.assign({}, d, { em: Date.now() })); gravarJson('novas_obras', l);
+  const l = listaNovas().filter(o => o.os !== d.os); l.unshift(Object.assign({}, d, { em: Date.now() })); gravarJson(NOVA_LISTA, l);
   salvar();
   $('nova').style.display = 'none'; $('barra').style.display = 'none';
   desenharTudo();
-  status('Obra nova ' + d.os + ': escolha o que vai medir e inclua cada esquadria.');
+  status((MODO === 'orc' ? 'Medição comercial ' : 'Obra ') + d.os + ': escolha o que vai medir e inclua cada esquadria.');
   $('obra').scrollIntoView({ block: 'start' });
 }
 
@@ -2121,7 +2140,7 @@ async function gerarCadernoNovo() {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   if (!extras.length) throw new Error('Inclua pelo menos uma esquadria antes de gerar o caderno.');
   const mol = await acharMolde();
-  if (!mol) throw new Error('Para montar o caderno do zero, abra uma vez neste aparelho qualquer caderno ORIGINAL: ele serve de modelo do layout (capa, cabeçalho e quadros).');
+  if (!mol) throw new Error('Para montar o caderno do zero, abra uma vez neste aparelho qualquer caderno ORIGINAL (na opção "Medição de obra com caderno padrão" da tela inicial): ele serve de modelo do layout (capa, cabeçalho e quadros).');
   const mB = mol.bytes instanceof Uint8Array ? mol.bytes : new Uint8Array(mol.bytes);
   const est = await lerEstrutura(mB);
   const molde = escolherMolde(est.itens);
@@ -2271,7 +2290,7 @@ $('btnGerar').onclick = async () => {
     if (obra.nova) { // caderno do zero: gera o caderno completo (capa, cabeçalho, quadros, assinatura)
       btn.disabled = true; btn.textContent = 'Montando o caderno…';
       status('Montando o caderno da obra nova...');
-      nome = `${base} - CADERNO DE MEDIÇÃO.pdf`;
+      nome = `${base} - ${MODO === 'orc' ? 'MEDIÇÃO COMERCIAL' : 'CADERNO DE MEDIÇÃO'}.pdf`;
       bytes = await gerarCadernoNovo();
     } else {
       const label = escopo === 'cm' ? 'CONTRAMARCO' : escopo === 'es' ? 'ESQUADRIAS' : 'MEDIÇÃO';

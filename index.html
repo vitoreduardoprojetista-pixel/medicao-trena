@@ -25,11 +25,11 @@
   .opcao:active { transform: scale(.98); }
   .opcao .ico { flex: none; width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 32px; color: #fff; }
   .opcao.bt .ico { background: var(--grad); }
-  .opcao.cam .ico { background: linear-gradient(135deg, #0ea5e9, #0d9488); }
-  .opcao .tit { font-size: 19px; font-weight: 800; line-height: 1.2; }
+  .opcao.sem .ico { background: linear-gradient(135deg, #059669, #0d9488); }
+  .opcao.orc .ico { background: linear-gradient(135deg, #f59e0b, #ea580c); }
+  .opcao .tit { font-size: 17px; font-weight: 800; line-height: 1.25; }
   .opcao .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
   .opcao .seta { margin-left: auto; font-size: 26px; color: #c4c8d6; }
-  .tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 2px 8px; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -39,19 +39,26 @@
 </header>
 <main>
   <a class="opcao bt" href="medicao.html">
-    <div class="ico">📶</div>
+    <div class="ico">📘</div>
     <div>
-      <div class="tit">Trena digital com Bluetooth</div>
-      <div class="sub">A medida cai direto no caderno de medição</div>
+      <div class="tit">Medição de obra com caderno padrão (fabricação)</div>
+      <div class="sub">Abre o caderno de medição da obra e a medida da trena cai direto nele</div>
     </div>
     <div class="seta">›</div>
   </a>
-  <a class="opcao cam" href="camera.html">
-    <div class="ico">📷</div>
+  <a class="opcao sem" href="medicao.html?modo=fab">
+    <div class="ico">📝</div>
     <div>
-      <div class="tit">Trena digital sem Bluetooth</div>
-      <div class="sub">Medição pela foto do visor da trena</div>
-      <span class="tag">Em desenvolvimento</span>
+      <div class="tit">Medição de obra sem caderno (fabricação)</div>
+      <div class="sub">Monta o caderno do zero, com os dados do cliente e as flags</div>
+    </div>
+    <div class="seta">›</div>
+  </a>
+  <a class="opcao orc" href="medicao.html?modo=orc">
+    <div class="ico">💼</div>
+    <div>
+      <div class="tit">Medição comercial (para orçamento)</div>
+      <div class="sub">Medidas e desenhos para o orçamento, sem flags</div>
     </div>
     <div class="seta">›</div>
   </a>
