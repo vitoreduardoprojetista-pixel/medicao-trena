@@ -235,13 +235,15 @@
   #ordemTopo button { font-size: 14px; padding: 10px 14px; }
   #ordemAjuda { font-size: 13px; color: var(--muted); padding: 11px 14px 4px; }
   #ordemLista { flex: 1; overflow: auto; padding: 8px 10px 20px; }
-  .ordRow { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 11px; margin: 7px 4px; box-shadow: var(--shadow); }
+  .ordRow { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px 10px 4px; margin: 7px 4px; box-shadow: var(--shadow); }
   .ordRow.dragging { box-shadow: var(--shadow-lg); opacity: .96; border-color: var(--brand); }
-  .ordRow .alca { font-size: 22px; color: var(--soft); cursor: grab; padding: 0 6px; touch-action: none; }
+  .ordRow .alca { font-size: 22px; color: var(--soft); cursor: grab; padding: 0 2px; touch-action: none; }
   .ordRow .num { font-size: 13px; font-weight: 800; color: var(--brand); min-width: 22px; text-align: center; }
   .ordRow .txt { flex: 1; font-size: 14px; min-width: 0; }
-  .ordRow .oq { flex: none; width: 52px; height: 64px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
-  .ordRow .odesc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
+  .ordRow .oqBox { position: relative; flex: none; }
+  .ordRow .oqBox .num { position: absolute; left: 2px; top: 2px; min-width: 0; font-size: 9px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.85); border-radius: 4px; padding: 0 3px; line-height: 13px; }
+  .ordRow .oq { display: block; width: 52px; height: 64px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+  .ordRow .odesc { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
   .ordRow .txt b { font-size: 15px; }
   .ordRow .updown { display: flex; flex-direction: column; gap: 3px; }
   .ordRow .updown button { background: var(--tint); color: var(--tint-ink); border: 1px solid var(--tint-bd); font-size: 12px; padding: 4px 9px; border-radius: 7px; }
@@ -1394,8 +1396,8 @@ function montarListaOrdem() {
     const row = document.createElement('div');
     row.className = 'ordRow'; row.dataset.id = id;
     const cq = croquiCache[it.id];
-    row.innerHTML = `<span class="alca">⠿</span><span class="num">${k + 1}</span>` +
-      `<img class="oq" id="oq-${id}" alt="" ${cq ? `src="${cq}"` : 'style="visibility:hidden"'}>` +
+    row.innerHTML = `<span class="alca">⠿</span>` +
+      `<span class="oqBox"><img class="oq" id="oq-${id}" alt="" ${cq ? `src="${cq}"` : 'style="visibility:hidden"'}><span class="num">${k + 1}</span></span>` +
       `<span class="txt"><b>${it.tipo}</b>${it.loc ? ' — ' + it.loc : ''}${it.desc ? `<span class="odesc">${it.desc}</span>` : ''}</span>` +
       `<div class="updown"><button data-up title="Subir">▲</button><button data-down title="Descer">▼</button></div>`;
     lista.appendChild(row);
