@@ -211,6 +211,7 @@
   body.mCad #btnNovaObra { display: none; }
   body.mOrc [data-flg] { display: none; }
   body.mOrc #escopoBar { display: none !important; }
+  body.mOrc #labLinha, body.mOrc #labDet { display: none !important; } /* comercial: só a descrição (03/11) */
   #extraFinal > span { font-size: 13px; color: var(--muted); font-weight: 600; }
   #extraFinal .fin { font-size: 13px; padding: 8px 12px; background: #e5e7eb; color: #111; }
   #extraFinal .fin.on { background: var(--brand); color: #fff; }
@@ -1628,7 +1629,7 @@ function posCanvas(ev) {
   return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height };
 }
 function lerCamposDesenho() {
-  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase(), linha: $('dcLinha').value.replace(/\s+/g, ' ').trim().toUpperCase().replace(/^LINHA\s+/, ''), detalhe: drawDet, vidro: drawVidro };
+  return { L: $('dcL').value.trim(), A: $('dcA').value.trim(), qt: $('dcQt').value.trim(), loc: $('dcLoc').value.trim(), peit: $('dcPeit').value.trim(), obs: $('dcObs').value.trim(), tipo: $('dcTipo').value.trim().toUpperCase(), desc: $('dcDesc').value.replace(/\s+/g, ' ').trim().toUpperCase(), linha: $('dcLinha').value.replace(/\s+/g, ' ').trim().toUpperCase().replace(/^LINHA\s+/, ''), detalhe: MODO === 'orc' ? null : drawDet, vidro: MODO === 'orc' ? null : drawVidro, ...(MODO === 'orc' ? { linha: '' } : {}) };
 }
 // Monta a imagem final: cabeçalho com os campos digitados + o desenho (base) embaixo.
 function comporDesenho(base, campos) {
