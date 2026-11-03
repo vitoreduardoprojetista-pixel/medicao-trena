@@ -454,6 +454,7 @@
     <p>Escaneie o QR de ativação que você recebeu — o app libera sozinho. Se recebeu por texto, cole aqui o código ou o link.</p>
     <textarea id="travaChave" placeholder="Cole o código ou o link aqui" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
     <button id="travaOk" class="ok">Liberar</button>
+    <button id="travaFechar" class="sec" style="display:none;margin-top:8px;width:100%">Agora não</button>
     <div id="travaMsg"></div>
   </div>
 </div>
@@ -521,7 +522,7 @@ function licGet(k) { try { return localStorage.getItem(k); } catch (e) { return 
 function licSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
 function lerLic() { return licGet('licenca_chave') || ''; }
 function licTravar(msg) { const m = $('travaMsg'); if (m) { m.className = msg ? 'erro' : ''; m.textContent = msg || ''; } $('trava').style.display = 'flex'; }
-function licDestravar() { $('trava').style.display = 'none'; }
+function licDestravar() { $('trava').style.display = 'none'; const f = $('travaFechar'); if (f) f.style.display = 'none'; }
 function licEsc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 // Marca d'água: mostra para quem a licença foi liberada (freio contra compartilhamento de chave).
 function licMostrarSelo(p) {
@@ -551,7 +552,23 @@ async function licChecar() {
   }
   licDestravar();
   licMostrarSelo(p);
+  licAvisoVencimento(p);
   return true;
+}
+// Aviso progressivo de vencimento (pedido do Vitor 03/11): ao abrir o app nos 3 últimos dias da licença.
+// exp é o último dia de uso; no dia seguinte o app trava.
+function licAvisoVencimento(p) {
+  const d = licDiasRestantes(p.exp);
+  if (d < 0 || d > 2) return;
+  const n = d + 1; // contando o próprio dia do vencimento: 3, 2, 1
+  const quando = n === 1 ? 'Falta 1 dia para vencer a sua licença (vence hoje)' : 'Faltam ' + n + ' dias para vencer a sua licença';
+  const trava = new Date(p.exp + 'T00:00:00'); trava.setDate(trava.getDate() + 1);
+  setTimeout(async () => {
+    const ok = await dialogo({ titulo: '⏳ ' + quando,
+      texto: 'A licença vale até ' + licFmt(p.exp) + '. A partir de ' + trava.toLocaleDateString('pt-BR') + ' o aplicativo fica bloqueado.\n\nPeça hoje mesmo a renovação ao fornecedor. Quando receber o novo QR, é só abrir o link que a licença é renovada na hora.',
+      ok: 'Já tenho o código', cancelar: 'Entendi' });
+    if (ok) { $('travaFechar').style.display = 'block'; licTravar(''); }
+  }, 400);
 }
 let _licErro = ''; // motivo da última ativação por QR que falhou (mostrado pela licChecar)
 // Ativação por token: aceita a chave, o código ou a URL inteira do QR (#at=...).
@@ -579,6 +596,7 @@ async function licProcessarHash() {
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
   if (!r.ok) _licErro = { invalida: 'QR de ativação inválido.', qr_expirado: 'Este QR de ativação expirou (vale 10 min). Peça um novo.', venceu: 'Esta liberação já venceu. Peça uma nova.' }[r.motivo] || '';
 }
+if ($('travaFechar')) $('travaFechar').onclick = () => { $('travaFechar').style.display = 'none'; licDestravar(); };
 if ($('travaOk')) $('travaOk').onclick = async () => {
   const entrada = $('travaChave').value.trim();
   const msg = $('travaMsg'); msg.className = '';
