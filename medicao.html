@@ -186,6 +186,7 @@
   .micBtn { flex: none; background: var(--tint, #eef); color: var(--brand); border: 1px solid var(--tint-bd, #c7d2fe); border-radius: 9px; font-size: 16px; padding: 0 10px; }
   .micBtn.ouvindo { background: #dc2626; color: #fff; border-color: #dc2626; animation: pulsoMic 1s infinite; }
   @keyframes pulsoMic { 50% { opacity: .6; } }
+  #ditadoAviso { display: none; position: fixed; left: 16px; right: 16px; bottom: 18px; z-index: 90; box-shadow: 0 6px 20px rgba(0,0,0,.35); padding: 9px 12px; border-radius: 10px; background: #111827; color: #fff; font-size: 13px; }
   .medirMini { display: none; background: var(--brand); color: #fff; border: 0; border-radius: 9px; font-size: 15px; padding: 0 11px; }
   .medirMini.armado { background: linear-gradient(135deg, #10b981, #059669); }
   #draw.modoExtra .medirMini { display: inline-block; }
@@ -358,6 +359,7 @@
     <label id="labPeit">Peitoril<input id="dcPeit" inputmode="numeric" placeholder="ex.: 1000"></label>
     <label>Observações<span class="comMedir"><input id="dcObs" placeholder="anotação"><button type="button" class="micBtn" data-ditar="dcObs" title="Ditar">🎤</button></span></label>
   </div>
+  <div id="ditadoAviso"></div>
   <div id="extraFinal">
     <span>Finalidade:</span>
     <button type="button" id="finOrc" class="fin on">Para orçamento</button>
@@ -1661,16 +1663,27 @@ $('drawLiberar').onclick = () => travarDesenho(false);
 $('drawParar').onclick = () => travarDesenho(true);
 // Ditado por voz (🎤) nos campos de texto do editor: usa o reconhecimento de fala do Chrome (pt-BR, precisa de internet).
 // O texto falado entra no fim do que já estiver escrito. Tocar de novo para parar.
-let ditado = null;
-function pararDitado() { if (ditado) { try { ditado.rec.stop(); } catch (e) { } } }
-document.querySelectorAll('[data-ditar]').forEach(btn => btn.onclick = () => {
+let ditado = null; // { rec, btn, prox } — o Chrome só deixa UM reconhecimento por vez
+function avisoDitado(t) {
+  const el = $('ditadoAviso'); if (!el) return;
+  el.textContent = t || ''; el.style.display = t ? 'block' : 'none';
+  clearTimeout(avisoDitado._t); if (t) avisoDitado._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+function pararDitado() { if (ditado) { ditado.prox = null; try { ditado.rec.abort(); } catch (e) { } } }
+function iniciarDitado(btn) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { dialogo({ tipo: 'avisar', titulo: 'Ditado indisponível', texto: 'Este navegador não reconhece fala. Use o Google Chrome no Android, ou o microfone do próprio teclado do celular.' }); return; }
-  if (ditado && ditado.btn === btn) { pararDitado(); return; }
-  pararDitado();
-  const campo = $(btn.dataset.ditar), base = campo.value.trim();
+  if (ditado) { // já tem um ouvindo: toca no mesmo = para; noutro = troca (espera o anterior terminar de verdade)
+    if (ditado.btn === btn) { pararDitado(); return; }
+    ditado.prox = btn; try { ditado.rec.abort(); } catch (e) { }
+    return;
+  }
+  const campo = $(btn.dataset.ditar);
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // fecha o teclado (ele disputa o microfone)
+  const base = campo.value.trim();
   const rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true;
-  ditado = { rec, btn }; btn.classList.add('ouvindo'); status('🎤 Pode falar... toque no microfone de novo para terminar.');
+  const d = ditado = { rec, btn, prox: null };
+  btn.classList.add('ouvindo'); avisoDitado('🎤 Pode falar… toque no microfone de novo para terminar.');
   let final = '';
   rec.onresult = ev => {
     let parcial = '';
@@ -1679,10 +1692,24 @@ document.querySelectorAll('[data-ditar]').forEach(btn => btn.onclick = () => {
     if (campo.id === 'dcDesc' || campo.id === 'dcLinha') txt = txt.toUpperCase();
     campo.value = txt;
   };
-  rec.onerror = ev => { if (ev.error === 'not-allowed') dialogo({ tipo: 'avisar', titulo: 'Microfone bloqueado', texto: 'Permita o uso do microfone para este site (toque no cadeado ao lado do endereço, no Chrome).' }); else if (ev.error !== 'aborted' && ev.error !== 'no-speech') status('Ditado: ' + ev.error + (ev.error === 'network' ? ' (precisa de internet)' : '')); };
-  rec.onend = () => { btn.classList.remove('ouvindo'); if (ditado && ditado.rec === rec) ditado = null; status('Ditado concluído. Confira o texto.'); };
-  try { rec.start(); } catch (e) { btn.classList.remove('ouvindo'); ditado = null; }
-});
+  rec.onerror = ev => {
+    const m = { 'not-allowed': 'Microfone bloqueado: permita o microfone para este site (cadeado ao lado do endereço, no Chrome).',
+      'service-not-allowed': 'Microfone bloqueado: permita o microfone para este site.',
+      'audio-capture': 'O microfone está ocupado (teclado por voz ou outro app). Feche o teclado e toque no 🎤 de novo.',
+      'network': 'O ditado precisa de internet.', 'no-speech': 'Não ouvi nada. Toque no 🎤 e fale de novo.' }[ev.error];
+    if (m) avisoDitado(m);
+  };
+  rec.onend = () => {
+    btn.classList.remove('ouvindo');
+    if (ditado === d) ditado = null;
+    if (d.prox) { const nb = d.prox; d.prox = null; setTimeout(() => iniciarDitado(nb), 150); return; }
+    if ($('ditadoAviso').textContent.startsWith('🎤')) avisoDitado('');
+  };
+  try { rec.start(); } catch (e) { btn.classList.remove('ouvindo'); ditado = null; avisoDitado('Não consegui ligar o microfone. Toque de novo.'); }
+}
+document.querySelectorAll('[data-ditar]').forEach(btn => btn.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); iniciarDitado(btn); }));
+// tocar para digitar noutro campo enquanto dita: encerra o ditado (o teclado ia tomar o microfone)
+$('drawCampos').addEventListener('focusin', ev => { if (ditado && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName) && ev.target.id !== ditado.btn.dataset.ditar) pararDitado(); });
 $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
 $('drawCancelar').onclick = () => { pararDitado(); editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
 $('dcLMedir').onclick = () => { alvoExtra = 'L'; $('dcLMedir').classList.add('armado'); $('dcAMedir').classList.remove('armado'); status('Meça com a trena — vai para a Largura.'); };
