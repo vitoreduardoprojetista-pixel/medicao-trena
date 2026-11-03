@@ -1087,6 +1087,7 @@ const D5T_DADOS = '0000ffb2-0000-1000-8000-00805f9b34fb';
 const BOSCH_SERV = '0000fde8-0000-1000-8000-00805f9b34fb';
 const BOSCH_SERV_ALT = '02a6c0d0-0451-4000-b000-fb3210111989';
 const BOSCH_DADOS = '02a6c0d2-0451-4000-b000-fb3210111989';
+const BOSCH_DADOS_ALT = '02a6c0d1-0451-4000-b000-fb3210111989'; // GLM 50-27 CG (testada pelo Vitor 03/11): write/indicate
 
 function textoParaMm(txt) {
   const m = txt.trim().match(/([\d.,]+)\s*(mm|cm|m|ft|in)?/i);
@@ -1117,9 +1118,18 @@ const CANDIDATOS = [D5T_SERV, BOSCH_SERV, BOSCH_SERV_ALT,
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '0783b03e-8535-b5a0-7140-a304d2495cb7'];
 const nomeUuid = u => u.startsWith('0000') && u.endsWith('-0000-1000-8000-00805f9b34fb') ? u.slice(4, 8) : u;
 
+let ultBosch = { h: '', t: 0 };
 function tratarDados(tipo, dv, origem) {
   let mm = null;
-  if (tipo === 'bosch') { log('Recebido: ' + hex(dv)); mm = boschParaMm(dv); }
+  if (tipo === 'bosch') {
+    const h = hex(dv);
+    if (h === 'c0 11 00 3a') return; // sinal de "estou viva" da Bosch, chega toda hora
+    const agora = Date.now();
+    if (h === ultBosch.h && agora - ultBosch.t < 1500) return; // o mesmo pacote repetido
+    ultBosch = { h, t: agora };
+    log('Recebido: ' + h); mm = boschParaMm(dv);
+    if (mm == null) return; // status/inclinação: não é medida
+  }
   else {
     const txt = new TextDecoder().decode(dv);
     const legivel = /^[\x20-\x7e\r\n\t]*$/.test(txt);
@@ -1169,11 +1179,12 @@ async function conectarDispositivo(device, reconexao) {
 
   // 2) protocolos abertos (D5T texto / Bosch)
   let car = await tentar(server, D5T_SERV, D5T_DADOS), tipo = 'texto', label = device.name || 'trena';
-  if (!car) { const b = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS); if (b) { car = b; tipo = 'bosch'; label = 'Bosch'; } }
+  if (!car) { const b = await tentar(server, BOSCH_SERV, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS) || await tentar(server, BOSCH_SERV_ALT, BOSCH_DADOS_ALT); if (b) { car = b; tipo = 'bosch'; label = 'Bosch'; } }
   if (car) {
-    car.addEventListener('characteristicvaluechanged', ev => tratarDados(tipo, ev.target.value));
+    // um ouvinte só por canal (na reconexão o Chrome devolve o mesmo objeto e a medida chegaria em dobro)
+    if (!car.__ouvindo) { car.__ouvindo = true; car.addEventListener('characteristicvaluechanged', ev => tratarDados(tipo, ev.target.value)); }
     await car.startNotifications();
-    if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a]));
+    if (tipo === 'bosch') await car.writeValue(new Uint8Array([0xc0, 0x55, 0x02, 0x01, 0x00, 0x1a])).catch(e => log('Bosch: comando inicial não aceito (' + e.message + ')'));
     salvarTrena(label);
     status('Trena ' + label + ' conectada. Toque num campo e meça.');
     return;
