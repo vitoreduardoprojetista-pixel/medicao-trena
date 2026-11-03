@@ -209,7 +209,13 @@
   #drawAcoes { display: flex; gap: 8px; background: var(--card); padding: 9px 11px; border-top: 1px solid var(--line); }
   #drawAcoes button { flex: 1; font-size: 14px; padding: 10px 8px; }
   #drawWrap { flex: 1 0 auto; min-height: 78vh; height: 78vh; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 8px; }
-  #drawCanvas { background: #fff; border-radius: 8px; touch-action: none; max-width: 100%; max-height: 100%; box-shadow: 0 4px 20px rgba(0,0,0,.45); }
+  #drawBox { position: relative; max-width: 100%; max-height: 100%; display: flex; }
+  #drawCanvas { background: #fff; border-radius: 8px; touch-action: none; max-width: 100%; max-height: calc(78vh - 16px); box-shadow: 0 4px 20px rgba(0,0,0,.45); }
+  #drawBox.travado #drawCanvas { touch-action: auto; }
+  #drawLiberar { white-space: nowrap; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 18px; padding: 16px 22px; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.3); display: none; }
+  #drawParar { position: absolute; right: 8px; top: 8px; font-size: 13px; padding: 7px 11px; background: rgba(17,24,39,.75); display: none; }
+  #drawBox.travado #drawLiberar { display: block; }
+  #drawBox:not(.travado) #drawParar { display: block; }
   /* Painel de configurações */
   #config { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
   #configTopo { background: var(--grad); color: #fff; padding: calc(14px + env(safe-area-inset-top, 0px)) 14px 14px; display: flex; align-items: center; justify-content: space-between; }
@@ -351,7 +357,9 @@
     <button id="drawCancelar" class="sec">Cancelar</button>
     <button id="drawSalvar" class="ok">Salvar</button>
   </div>
-  <div id="drawWrap"><canvas id="drawCanvas"></canvas></div>
+  <div id="drawWrap"><div id="drawBox"><canvas id="drawCanvas"></canvas>
+    <button type="button" id="drawLiberar">✏️ Desenhar à mão</button>
+    <button type="button" id="drawParar">✋ Parar de desenhar</button></div></div>
 </div>
 
 <!-- Configurações (chave da trena D5T) -->
@@ -945,6 +953,7 @@ function desenharBarra() {
     : 'Aguardando medida da trena...';
 }
 
+const MAX_MEDIDAS = 4;
 function adicionarMedida(mm) {
   // Item extra sendo desenhado: medida vai pro campo Largura/Altura armado.
   if (alvoExtra && $('draw').style.display !== 'none') {
@@ -968,6 +977,12 @@ function adicionarMedida(mm) {
   }
   if (!ativo) { status('Medida recebida (' + mm + ' mm), mas nenhum campo está selecionado. Toque num campo.'); return; }
   const k = chave(ativo.i, ativo.u, ativo.c);
+  if ((medidas[k] || []).length >= MAX_MEDIDAS) { // o campo do PDF é pequeno: acima disso os números se misturam
+    status('Este campo já tem ' + MAX_MEDIDAS + ' medidas (a principal + 3). Apague uma para medir de novo. Recebida e NÃO guardada: ' + mm + ' mm.');
+    if (navigator.vibrate) navigator.vibrate([60, 60, 60]);
+    dialogo({ tipo: 'avisar', titulo: 'Limite de medidas', texto: 'Este campo já tem ' + MAX_MEDIDAS + ' medidas (a principal + 3). A medida de ' + mm + ' mm não foi guardada. Apague uma das medidas do campo para medir de novo.' });
+    return;
+  }
   (medidas[k] = medidas[k] || []).push(mm);
   salvar();
   desenharCampo(ativo.i, ativo.u, ativo.c);
@@ -1522,7 +1537,7 @@ function abrirDesenho() {
   prepararCanvas();
   DC_IDS.forEach(id => $(id).value = '');
   setDetalhe('', '');
-  $('draw').style.display = 'flex'; $('draw').scrollTop = 0;
+  $('draw').style.display = 'flex'; $('draw').scrollTop = 0; travarDesenho(true);
 }
 let drawDet = '', drawVidro = '';
 function setDetalhe(det, vid) {
@@ -1558,7 +1573,7 @@ function abrirExtraDesenho(ex) {
   // Tipo do item adicional: sugere ADC-01, ADC-02... pela ordem, mas fica editável.
   const pos = ex ? extras.indexOf(ex) : extras.length;
   $('dcTipo').value = (ex && ex.campos && ex.campos.tipo) || tipoPadrao(pos < 0 ? extras.length : pos);
-  $('draw').style.display = 'flex'; $('draw').scrollTop = 0;
+  $('draw').style.display = 'flex'; $('draw').scrollTop = 0; travarDesenho(true);
   if (ex && ex.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = ex.base; }
 }
 function abrirDesenhoEdicao(k) {
@@ -1569,7 +1584,7 @@ function abrirDesenhoEdicao(k) {
   const c = a.campos || {};
   $('dcL').value = c.L || ''; $('dcA').value = c.A || ''; $('dcQt').value = c.qt || '';
   $('dcLoc').value = c.loc || ''; $('dcPeit').value = c.peit || ''; $('dcObs').value = c.obs || '';
-  $('draw').style.display = 'flex'; $('draw').scrollTop = 0;
+  $('draw').style.display = 'flex'; $('draw').scrollTop = 0; travarDesenho(true);
   if (a.base) { const img = new Image(); img.onload = () => drawCtx.drawImage(img, 0, 0, 1000, 1414); img.src = a.base; }
 }
 function posCanvas(ev) {
@@ -1604,6 +1619,12 @@ function comporDesenho(base, campos) {
   return out.toDataURL('image/png');
 }
 $('btnDesenhar').onclick = abrirDesenho;
+// A folha abre TRAVADA: só risca depois de tocar em "Desenhar à mão" (pedido do Vitor 03/11), assim
+// rolar a tela ou segurar o celular não risca o desenho sem querer.
+let desenhoTravado = true;
+function travarDesenho(t) { desenhoTravado = t; desenhando = false; $('drawBox').classList.toggle('travado', t); }
+$('drawLiberar').onclick = () => travarDesenho(false);
+$('drawParar').onclick = () => travarDesenho(true);
 $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
 $('drawCancelar').onclick = () => { editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
 $('dcLMedir').onclick = () => { alvoExtra = 'L'; $('dcLMedir').classList.add('armado'); $('dcAMedir').classList.remove('armado'); status('Meça com a trena — vai para a Largura.'); };
@@ -1635,8 +1656,8 @@ $('drawSalvar').onclick = () => {
 };
 (() => {
   const cv = $('drawCanvas');
-  cv.addEventListener('pointerdown', ev => { ev.preventDefault(); desenhando = true; const p = posCanvas(ev); drawCtx.beginPath(); drawCtx.moveTo(p.x, p.y); });
-  cv.addEventListener('pointermove', ev => { if (!desenhando) return; ev.preventDefault(); const p = posCanvas(ev); drawCtx.lineTo(p.x, p.y); drawCtx.stroke(); });
+  cv.addEventListener('pointerdown', ev => { if (desenhoTravado) return; ev.preventDefault(); desenhando = true; const p = posCanvas(ev); drawCtx.beginPath(); drawCtx.moveTo(p.x, p.y); });
+  cv.addEventListener('pointermove', ev => { if (!desenhando || desenhoTravado) return; ev.preventDefault(); const p = posCanvas(ev); drawCtx.lineTo(p.x, p.y); drawCtx.stroke(); });
   window.addEventListener('pointerup', () => { desenhando = false; });
   window.addEventListener('pointercancel', () => { desenhando = false; });
 })();
@@ -1802,32 +1823,32 @@ async function gerarPdf() {
     }
   });
 
-  // 4) croquis e fotos como páginas no fim do caderno
-  await anexarImagens(doc, fonte, negrito, cinza, paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 });
-
-  // 5) itens extras no formato do caderno (carimbo de um item real, uma linha de medida por unidade),
-  //    inseridos logo DEPOIS da última página de esquadria (antes da assinatura e dos anexos).
+  // 4) itens extras no formato do caderno (carimbo de um item real, uma linha de medida por unidade) e
+  //    depois os croquis/fotos, inseridos logo DEPOIS da última página de esquadria (antes da assinatura).
+  const base = paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 };
+  const at0 = assinatura ? assinatura.pagina + 1 : doc.getPageCount();
+  let at = at0;
+  const moldeDoc = (extras.length || anexos.length) ? await PDFDocument.load(pdfBytes) : null; // molde pristino
   if (extras.length) {
     const molde = escolherMolde(itens);
     if (molde) {
-      const moldeDoc = await PDFDocument.load(pdfBytes); // molde pristino (sem as medidas já desenhadas)
       const K = { doc, fonte, negrito, azul, branco, preto, hoje, centro, marcarX };
-      let at = assinatura ? assinatura.pagina + 1 : doc.getPageCount();
       const { width: PW, height: PH } = moldeDoc.getPage(molde.pagina).getSize();
       await empilharItens(K, moldeDoc.getPage(molde.pagina), molde.slot, extras, () => doc.insertPage(at++, [PW, PH]));
-      // Reposiciona a assinatura: apaga da página da última esquadria e põe numa página só dela,
-      // logo após os extras (assim os extras ficam ENTRE a última esquadria e a assinatura).
-      if (assinatura) {
-        const yA = assinatura.y;
-        const pgAss = paginas[assinatura.pagina];
-        if (pgAss) pgAss.drawRectangle({ x: 25, y: yA - 12, width: 548, height: 80, color: branco });
-        const [assPg] = await doc.copyPages(moldeDoc, [assinatura.pagina]);
-        doc.insertPage(at++, assPg);
-        assPg.drawRectangle({ x: 0, y: yA + 70, width: 595, height: 842 - (yA + 70), color: branco }); // some com o item acima
-        assPg.drawRectangle({ x: 0, y: 0, width: 595, height: yA - 20, color: branco });                 // some com o resto abaixo
-        assPg.drawRectangle({ x: 500, y: 16, width: 92, height: 26, color: branco });                    // rodapé
-      }
     }
+  }
+  if (anexos.length) await anexarImagens(doc, fonte, negrito, cinza, base, () => doc.insertPage(at++, [base.width, base.height]));
+  // Reposiciona a assinatura: apaga da página da última esquadria e põe numa página só dela, logo após
+  // os extras/anexos (assim eles ficam ENTRE a última esquadria e a assinatura).
+  if (assinatura && at > at0) {
+    const yA = assinatura.y;
+    const pgAss = paginas[assinatura.pagina];
+    if (pgAss) pgAss.drawRectangle({ x: 25, y: yA - 12, width: 548, height: 80, color: branco });
+    const [assPg] = await doc.copyPages(moldeDoc, [assinatura.pagina]);
+    doc.insertPage(at++, assPg);
+    assPg.drawRectangle({ x: 0, y: yA + 70, width: 595, height: 842 - (yA + 70), color: branco }); // some com o item acima
+    assPg.drawRectangle({ x: 0, y: 0, width: 595, height: yA - 20, color: branco });                 // some com o resto abaixo
+    assPg.drawRectangle({ x: 500, y: 16, width: 92, height: 26, color: branco });                    // rodapé
   }
   return await doc.save();
 }
@@ -1872,6 +1893,11 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
   pg.drawRectangle({ x: 167, y: lado.y + 11, width: 416, height: 62, color: branco }); // descrição/tratamento/vidros
   const cqX = 10, cqX1 = lado.x - 6, cqYb = tipoT.y + 8, cqYt = lado.y + 71;
   pg.drawRectangle({ x: cqX, y: cqYb, width: cqX1 - cqX, height: cqYt - cqYb, color: branco }); // croqui vetorial
+  if (MODO === 'orc' && slot.obsPos) { // medição comercial: sem flags no quadro (só croqui, descrição e medidas)
+    const yF = slot.obsPos.y + 12;
+    pg.drawRectangle({ x: lado.x - 5, y: yF, width: 583 - (lado.x - 5), height: lado.y + 10 - yF, color: branco });
+    pg.drawRectangle({ x: cqX, y: yF, width: lado.x - 3 - cqX, height: cqYb - yF + 1, color: branco });
+  }
   let budgetY = null;
   if (uT) {
     // Apaga só o TEXTO do "previsto" do molde (linha logo acima da 1ª linha de medida) e o eco do
@@ -2003,14 +2029,14 @@ async function empilharItens(K, srcPg, st, lista, novaPagina, inicio) {
 }
 
 // Croquis e fotos (anexos) como páginas no fim do caderno.
-async function anexarImagens(doc, fonte, negrito, cinza, base) {
+async function anexarImagens(doc, fonte, negrito, cinza, base, novaPagina) {
   const margem = 28, titH = 22;
   for (let k = 0; k < anexos.length; k++) {
     const a = anexos[k];
     let img;
     try { img = a.tipo === 'foto' ? await doc.embedJpg(dataUrlParaBytes(a.data)) : await doc.embedPng(dataUrlParaBytes(a.data)); }
     catch (e) { try { img = await doc.embedPng(dataUrlParaBytes(a.data)); } catch (e2) { log('Anexo ' + (k + 1) + ': ' + e2.message); continue; } }
-    const pg = doc.addPage([base.width, base.height]);
+    const pg = novaPagina ? novaPagina() : doc.addPage([base.width, base.height]);
     const maxW = base.width - margem * 2, maxH = base.height - margem * 2 - titH;
     const esc = Math.min(maxW / img.width, maxH / img.height);
     const w = img.width * esc, h = img.height * esc;
@@ -2070,6 +2096,22 @@ function abrirNovaObra(edit) {
   $('nova').style.display = 'flex';
 }
 $('btnNovaObra').onclick = () => abrirNovaObra();
+// Sair do caderno (botão ‹ do topo ou o "voltar" do Android) pede confirmação quando há uma obra aberta.
+const obraAberta = () => itens.length > 0 || !!obra.nova;
+async function confirmarSaida() {
+  return dialogo({ titulo: 'Sair do caderno?', texto: 'As medidas ficam salvas neste celular e você pode continuar depois.', ok: 'Sair', cancelar: 'Permanecer' });
+}
+$('btnInicio').onclick = async ev => {
+  if (!obraAberta()) return;
+  ev.preventDefault();
+  if (await confirmarSaida()) location.href = 'index.html';
+};
+try { history.replaceState({ base: 1 }, ''); history.pushState({ caderno: 1 }, ''); } catch (e) { }
+window.addEventListener('popstate', async () => {
+  if (!obraAberta()) { history.back(); return; }
+  history.pushState({ caderno: 1 }, ''); // continua na página enquanto pergunta
+  if (await confirmarSaida()) location.href = 'index.html';
+});
 if (MODO !== 'cad') setTimeout(() => { if (!obra.nova) abrirNovaObra(); }, 0); // obra sem caderno / comercial: já abre o cadastro
 $('novaFechar').onclick = () => { $('nova').style.display = 'none'; };
 $('novaOk').onclick = () => {
@@ -2181,7 +2223,9 @@ async function gerarCadernoNovo() {
   const [dCapa, dCab, dCar, dAss, dFim] = await Promise.all([carregar(), carregar(), carregar(), carregar(), carregar()]);
   // capa
   const capaV = valoresDe(T[0]);
-  const capaTir = limparPagina(dCapa, dCapa.getPage(0), (x, y) => naFaixa(capaV, x, y) || perto(T[0].filter(t => ehNumPag(t.s)), x, y));
+  // medição comercial: o título grande da capa ("CADERNO DE / MEDIÇÃO / DE ESQUADRIAS") vira "PROPOSTA COMERCIAL"
+  const capaTitT = MODO === 'orc' ? T[0].filter(t => /^(CADERNO DE|MEDIÇÃO|DE ESQUADRIAS)$/i.test(t.s.trim())) : [];
+  const capaTir = limparPagina(dCapa, dCapa.getPage(0), (x, y) => naFaixa(capaV, x, y) || perto(T[0].filter(t => ehNumPag(t.s)), x, y) || perto(capaTitT, x, y));
   // cabeçalho da obra: fica só o que está acima do 1º item (rótulos sem valor); o resto da página sai
   const cabT = T[hp].filter(t => t.y > it0top), cabV = valoresDe(cabT);
   const cabTir = limparPagina(dCab, dCab.getPage(hp), (x, y) => y <= it0top || naFaixa(cabV, x, y), (e, f) => f < it0top);
@@ -2225,6 +2269,15 @@ async function gerarCadernoNovo() {
   const [capa] = await out.copyPages(dCapa, [0]); out.addPage(capa);
   const capaVals = { 'CLIENTE:': o.cliente, 'OBRA:': o.obra || o.cliente, 'O.S.:': o.os, 'ENDEREÇO:': junta(o.end, o.compl, o.bairro), 'CIDADE:': [o.cidade, o.uf].filter(Boolean).join(' - '), 'VENDEDOR:': o.vendedor };
   for (const rot in capaVals) escrever(capa, capaV, capaTir, rot, capaVals[rot], PW - 40);
+  if (capaTitT.length) {
+    const novo = { 'CADERNO DE': 'PROPOSTA', 'MEDIÇÃO': 'COMERCIAL', 'DE ESQUADRIAS': 'DE ESQUADRIAS' };
+    for (const t of capaTitT) {
+      const orig = capaTir.filter(o => Math.abs(o.y - t.y) < 1).sort((a, b) => a.x - b.x)[0];
+      const txt = novo[t.s.trim().toUpperCase()] || t.s;
+      let tam = orig ? orig.tam : t.tam; while (tam > 10 && negrito.widthOfTextAtSize(txt, tam) > PW * 0.6 - t.x) tam -= 1; // não invade o desenho da capa
+      capa.drawText(txt, { x: orig ? orig.x : t.x, y: t.y, size: tam, font: negrito, color: orig ? orig.cor : preto });
+    }
+  }
   // 2) cabeçalho da obra (1ª página de itens)
   let pg = out.addPage([PW, PH]);
   pg.drawPage(await out.embedPage(dCab.getPage(hp), { left: 0, right: PW, bottom: it0top, top: PH }), { x: 0, y: it0top });
@@ -2240,17 +2293,17 @@ async function gerarCadernoNovo() {
   }
   // 3) as esquadrias, no quadro do caderno, uma linha de medida por unidade
   const fim = await empilharItens(K, dCar.getPage(sp), st, extras, () => out.addPage([PW, PH]), { pg, cursor: it0top });
-  // 4) assinatura logo depois do último item (ou numa página nova, se não couber)
+  // 4) croquis e fotos logo depois da última esquadria (antes da assinatura, pedido do Vitor 03/11)
+  await anexarImagens(out, fonte, negrito, cinza, { width: PW, height: PH });
+  // 5) assinatura logo depois do último item (ou numa página nova, se não couber / se vieram anexos)
   if (ap != null) {
     let { pg: pa, cursor } = fim;
-    if (cursor - 12 - 90 < fim.BASE) { pa = out.addPage([PW, PH]); cursor = fim.TOPO; }
+    if (anexos.length || cursor - 12 - 90 < fim.BASE) { pa = out.addPage([PW, PH]); cursor = fim.TOPO; }
     const yTop = cursor - 24;
     pa.drawPage(await out.embedPage(dAss.getPage(ap), { left: 0, right: PW, bottom: yA - 20, top: yA + 70 }), { x: 0, y: yTop - 90 });
   }
-  // 5) páginas finais do modelo (informações complementares, anotações)
+  // 6) páginas finais do modelo (informações complementares, anotações)
   if (finais.length) (await out.copyPages(dFim, finais)).forEach(p => out.addPage(p));
-  // 6) croquis e fotos
-  await anexarImagens(out, fonte, negrito, cinza, { width: PW, height: PH });
   // 7) numeração "N / total" no mesmo lugar e estilo do caderno (a capa não tem número)
   let np = null; for (const l of T) { np = l.find(t => ehNumPag(t.s)); if (np) break; }
   const total = out.getPageCount();
