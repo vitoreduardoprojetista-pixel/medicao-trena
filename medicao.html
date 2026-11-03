@@ -182,7 +182,10 @@
   #drawCampos input { font-size: 15px; padding: 8px; border: 1.5px solid var(--line2); border-radius: 9px; width: 100%; box-sizing: border-box; }
   #drawCampos input:focus { outline: 0; border-color: var(--brand); }
   #drawCampos .comMedir { display: flex; gap: 5px; align-items: stretch; }
-  #drawCampos .comMedir input { flex: 1; min-width: 0; }
+  #drawCampos .comMedir input, #drawCampos .comMedir textarea { flex: 1; min-width: 0; }
+  .micBtn { flex: none; background: var(--tint, #eef); color: var(--brand); border: 1px solid var(--tint-bd, #c7d2fe); border-radius: 9px; font-size: 16px; padding: 0 10px; }
+  .micBtn.ouvindo { background: #dc2626; color: #fff; border-color: #dc2626; animation: pulsoMic 1s infinite; }
+  @keyframes pulsoMic { 50% { opacity: .6; } }
   .medirMini { display: none; background: var(--brand); color: #fff; border: 0; border-radius: 9px; font-size: 15px; padding: 0 11px; }
   .medirMini.armado { background: linear-gradient(135deg, #10b981, #059669); }
   #draw.modoExtra .medirMini { display: inline-block; }
@@ -341,8 +344,8 @@
   </div>
   <div id="drawCampos">
     <label id="labTipo" class="full">Tipo<input id="dcTipo" placeholder="ex.: ADC-01" autocapitalize="characters"></label>
-    <label id="labDesc" class="full">Descrição da esquadria<textarea id="dcDesc" rows="2" placeholder="ex.: PORTA DE CORRER 2 FOLHAS, VIDRO TEMPERADO 6MM INCOLOR" autocapitalize="characters"></textarea></label>
-    <label id="labLinha" class="full">Linha<input id="dcLinha" placeholder="ex.: GOLD" autocapitalize="characters"></label>
+    <label id="labDesc" class="full">Descrição da esquadria<span class="comMedir"><textarea id="dcDesc" rows="2" placeholder="ex.: PORTA DE CORRER 2 FOLHAS, VIDRO TEMPERADO 6MM INCOLOR (ou toque no 🎤 e fale)" autocapitalize="characters"></textarea><button type="button" class="micBtn" data-ditar="dcDesc" title="Ditar">🎤</button></span></label>
+    <label id="labLinha" class="full">Linha<span class="comMedir"><input id="dcLinha" placeholder="ex.: GOLD" autocapitalize="characters"><button type="button" class="micBtn" data-ditar="dcLinha" title="Ditar">🎤</button></span></label>
     <div id="labDet" class="full"><span class="detRot">Detalhe da esquadria</span>
       <div class="chips" id="detOps"></div>
       <div id="vidroBox"><span class="detRot">Vidro</span><div class="chips" id="vidroOps"></div></div>
@@ -350,9 +353,9 @@
     <label>Largura<span class="comMedir"><input id="dcL" inputmode="numeric" placeholder="ex.: 1200"><button type="button" id="dcLMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Altura<span class="comMedir"><input id="dcA" inputmode="numeric" placeholder="ex.: 1500"><button type="button" id="dcAMedir" class="medirMini" title="Medir com a trena">📏</button></span></label>
     <label>Quantidade<input id="dcQt" inputmode="numeric" placeholder="ex.: 2"></label>
-    <label>Localização<input id="dcLoc" placeholder="ex.: Sala"></label>
+    <label>Localização<span class="comMedir"><input id="dcLoc" placeholder="ex.: Sala"><button type="button" class="micBtn" data-ditar="dcLoc" title="Ditar">🎤</button></span></label>
     <label id="labPeit">Peitoril<input id="dcPeit" inputmode="numeric" placeholder="ex.: 1000"></label>
-    <label>Observações<input id="dcObs" placeholder="anotação"></label>
+    <label>Observações<span class="comMedir"><input id="dcObs" placeholder="anotação"><button type="button" class="micBtn" data-ditar="dcObs" title="Ditar">🎤</button></span></label>
   </div>
   <div id="extraFinal">
     <span>Finalidade:</span>
@@ -1655,13 +1658,37 @@ let desenhoTravado = true;
 function travarDesenho(t) { desenhoTravado = t; desenhando = false; $('drawBox').classList.toggle('travado', t); }
 $('drawLiberar').onclick = () => travarDesenho(false);
 $('drawParar').onclick = () => travarDesenho(true);
+// Ditado por voz (🎤) nos campos de texto do editor: usa o reconhecimento de fala do Chrome (pt-BR, precisa de internet).
+// O texto falado entra no fim do que já estiver escrito. Tocar de novo para parar.
+let ditado = null;
+function pararDitado() { if (ditado) { try { ditado.rec.stop(); } catch (e) { } } }
+document.querySelectorAll('[data-ditar]').forEach(btn => btn.onclick = () => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { dialogo({ tipo: 'avisar', titulo: 'Ditado indisponível', texto: 'Este navegador não reconhece fala. Use o Google Chrome no Android, ou o microfone do próprio teclado do celular.' }); return; }
+  if (ditado && ditado.btn === btn) { pararDitado(); return; }
+  pararDitado();
+  const campo = $(btn.dataset.ditar), base = campo.value.trim();
+  const rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true;
+  ditado = { rec, btn }; btn.classList.add('ouvindo'); status('🎤 Pode falar... toque no microfone de novo para terminar.');
+  let final = '';
+  rec.onresult = ev => {
+    let parcial = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) final += t + ' '; else parcial += t; }
+    let txt = [base, (final + parcial).trim()].filter(Boolean).join(' ');
+    if (campo.id === 'dcDesc' || campo.id === 'dcLinha') txt = txt.toUpperCase();
+    campo.value = txt;
+  };
+  rec.onerror = ev => { if (ev.error === 'not-allowed') dialogo({ tipo: 'avisar', titulo: 'Microfone bloqueado', texto: 'Permita o uso do microfone para este site (toque no cadeado ao lado do endereço, no Chrome).' }); else if (ev.error !== 'aborted' && ev.error !== 'no-speech') status('Ditado: ' + ev.error + (ev.error === 'network' ? ' (precisa de internet)' : '')); };
+  rec.onend = () => { btn.classList.remove('ouvindo'); if (ditado && ditado.rec === rec) ditado = null; status('Ditado concluído. Confira o texto.'); };
+  try { rec.start(); } catch (e) { btn.classList.remove('ouvindo'); ditado = null; }
+});
 $('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
-$('drawCancelar').onclick = () => { editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
+$('drawCancelar').onclick = () => { pararDitado(); editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
 $('dcLMedir').onclick = () => { alvoExtra = 'L'; $('dcLMedir').classList.add('armado'); $('dcAMedir').classList.remove('armado'); status('Meça com a trena — vai para a Largura.'); };
 $('dcAMedir').onclick = () => { alvoExtra = 'A'; $('dcAMedir').classList.add('armado'); $('dcLMedir').classList.remove('armado'); status('Meça com a trena — vai para a Altura.'); };
 $('finOrc').onclick = () => setFinalidade('orc');
 $('finFab').onclick = () => setFinalidade('fab');
-$('drawSalvar').onclick = () => {
+$('drawSalvar').onclick = () => { pararDitado();
   const campos = lerCamposDesenho();
   const base = $('drawCanvas').toDataURL('image/png');
   const data = comporDesenho($('drawCanvas'), campos);
