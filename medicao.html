@@ -493,7 +493,7 @@ const confirmar = (texto, ok = 'Sim', perigo = true) => dialogo({ texto, ok, can
 // Para começar a exigir chave dos clientes, troque para true e publique.
 // Aqui fica SÓ a chave PÚBLICA: ela CONFERE a chave mas NÃO consegue criar nenhuma.
 // As chaves são criadas no gerador (gerador.html), que usa a sua chave PRIVADA (só sua).
-const LIC_EXIGIR = false;   // false = fase de testes (app abre normal). Troque p/ true para exigir chave.
+const LIC_EXIGIR = true;    // LIGADO em 03/11/2026 (pedido do Vitor). false = app abre sem chave.
 const LIC_GRACA = 10;       // aberturas de tolerância se o relógio parecer atrasado (anti-retrocesso de data)
 const LIC_PUB = { "kty": "EC", "crv": "P-256", "x": "HorpVMf5LxF3PW_3Yrw7CKnc6wJmy_FAWuVKvTjTXo0", "y": "bYmTIM_J4MIg3MaVVSF81eE9pH8zi6t6r0kL2dwoGQc", "ext": true };
 const licB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
