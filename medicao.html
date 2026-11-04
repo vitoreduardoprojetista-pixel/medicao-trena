@@ -1664,57 +1664,69 @@ $('drawLiberar').onclick = () => travarDesenho(false);
 $('drawParar').onclick = () => travarDesenho(true);
 // Ditado por voz (🎤) nos campos de texto do editor: usa o reconhecimento de fala do Chrome (pt-BR, precisa de internet).
 // O texto falado entra no fim do que já estiver escrito. Tocar de novo para parar.
-let ditado = null; // { rec, btn, prox } — o Chrome só deixa UM reconhecimento por vez
+// Um reconhecedor SÓ, reaproveitado (no Android criar vários costuma travar o 2º uso) e em modo
+// "uma frase por toque" (continuous=false): termina sozinho quando você para de falar.
+let ditado = null;   // { btn, campo, base, fim } da gravação atual
+let recVoz = null;
 function avisoDitado(t) {
   const el = $('ditadoAviso'); if (!el) return;
   el.textContent = t || ''; el.style.display = t ? 'block' : 'none';
   clearTimeout(avisoDitado._t); if (t) avisoDitado._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
 }
-// Alguns Android não disparam o "fim" depois do abort: se em 1,2 s não terminar, solta à força
-// (senão o app achava que ainda estava ouvindo e o 🎤 não gravava mais).
-function encerrarRec(d) {
-  try { d.rec.abort(); } catch (e) { }
-  clearTimeout(d.vigia); d.vigia = setTimeout(() => { if (!d.fim) d.rec.onend && d.rec.onend(); }, 1200);
+function fimDitado(d) {
+  if (!d || d.fim) return; d.fim = true; clearTimeout(d.vigia);
+  d.btn.classList.remove('ouvindo');
+  if (ditado === d) ditado = null;
+  if ($('ditadoAviso').textContent.startsWith('🎤')) avisoDitado('');
+  if (d.prox) { const nb = d.prox; d.prox = null; setTimeout(() => iniciarDitado(nb), 200); }
 }
-function pararDitado() { if (ditado) { ditado.prox = null; encerrarRec(ditado); } }
-function iniciarDitado(btn) {
+function pararDitado() {
+  const d = ditado; if (!d) return;
+  try { recVoz.stop(); } catch (e) { }
+  clearTimeout(d.vigia); d.vigia = setTimeout(() => { log('Ditado: sem "fim" do Android, liberando.'); try { recVoz.abort(); } catch (e) { } fimDitado(d); }, 1500);
+}
+function criarRec() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { dialogo({ tipo: 'avisar', titulo: 'Ditado indisponível', texto: 'Este navegador não reconhece fala. Use o Google Chrome no Android, ou o microfone do próprio teclado do celular.' }); return; }
-  if (ditado) { // já tem um ouvindo: toca no mesmo = para; noutro = troca (espera o anterior terminar de verdade)
-    if (ditado.btn === btn) { pararDitado(); return; }
-    ditado.prox = btn; encerrarRec(ditado);
-    return;
-  }
-  const campo = $(btn.dataset.ditar);
-  if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // fecha o teclado (ele disputa o microfone)
-  const base = campo.value.trim();
-  const rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true;
-  const d = ditado = { rec, btn, prox: null };
-  btn.classList.add('ouvindo'); avisoDitado('🎤 Pode falar… toque no microfone de novo para terminar.');
-  let final = '';
+  if (!SR) return null;
+  const rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  rec.onstart = () => log('Ditado: ouvindo');
   rec.onresult = ev => {
-    if (d.fim) return;
-    let parcial = '';
-    for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) final += t + ' '; else parcial += t; }
-    let txt = [base, (final + parcial).trim()].filter(Boolean).join(' ');
-    if (campo.id === 'dcDesc' || campo.id === 'dcLinha') txt = txt.toUpperCase();
-    campo.value = txt;
+    const d = ditado; if (!d || d.fim) return;
+    let txt = '';
+    for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+    let v = [d.base, txt.trim()].filter(Boolean).join(' ');
+    if (d.campo.id === 'dcDesc' || d.campo.id === 'dcLinha') v = v.toUpperCase();
+    d.campo.value = v;
   };
   rec.onerror = ev => {
+    log('Ditado erro: ' + ev.error);
     const m = { 'not-allowed': 'Microfone bloqueado: permita o microfone para este site (cadeado ao lado do endereço, no Chrome).',
       'service-not-allowed': 'Microfone bloqueado: permita o microfone para este site.',
       'audio-capture': 'O microfone está ocupado (teclado por voz ou outro app). Feche o teclado e toque no 🎤 de novo.',
       'network': 'O ditado precisa de internet.', 'no-speech': 'Não ouvi nada. Toque no 🎤 e fale de novo.' }[ev.error];
     if (m) avisoDitado(m);
   };
-  rec.onend = () => {
-    if (d.fim) return; d.fim = true; clearTimeout(d.vigia);
-    btn.classList.remove('ouvindo');
-    if (ditado === d) ditado = null;
-    if (d.prox) { const nb = d.prox; d.prox = null; setTimeout(() => iniciarDitado(nb), 150); return; }
-    if ($('ditadoAviso').textContent.startsWith('🎤')) avisoDitado('');
-  };
-  try { rec.start(); } catch (e) { btn.classList.remove('ouvindo'); ditado = null; avisoDitado('Não consegui ligar o microfone. Toque de novo.'); }
+  rec.onend = () => { log('Ditado: fim'); fimDitado(ditado); };
+  return rec;
+}
+function iniciarDitado(btn) {
+  if (!recVoz) recVoz = criarRec();
+  if (!recVoz) { dialogo({ tipo: 'avisar', titulo: 'Ditado indisponível', texto: 'Este navegador não reconhece fala. Use o Google Chrome no Android, ou o microfone do próprio teclado do celular.' }); return; }
+  if (ditado) { // tocar no mesmo 🎤 = parar; noutro = parar e começar o novo quando o anterior terminar
+    if (ditado.btn !== btn) ditado.prox = btn;
+    pararDitado(); return;
+  }
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // o teclado disputa o microfone
+  const campo = $(btn.dataset.ditar);
+  const d = ditado = { btn, campo, base: campo.value.trim(), fim: false };
+  btn.classList.add('ouvindo'); avisoDitado('🎤 Pode falar… (para sozinho quando você parar de falar)');
+  try { recVoz.start(); }
+  catch (e) { // ainda preso na gravação anterior: solta e tenta de novo uma vez
+    log('Ditado start: ' + e.message);
+    try { recVoz.abort(); } catch (e2) { }
+    recVoz = criarRec();
+    try { recVoz.start(); } catch (e3) { log('Ditado start 2: ' + e3.message); fimDitado(d); avisoDitado('Não consegui ligar o microfone. Toque no 🎤 de novo.'); }
+  }
 }
 document.querySelectorAll('[data-ditar]').forEach(btn => btn.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); iniciarDitado(btn); }));
 // tocar para digitar noutro campo enquanto dita: encerra o ditado (o teclado ia tomar o microfone)
