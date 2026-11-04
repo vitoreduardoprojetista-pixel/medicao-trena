@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.esquadsolution.medicao",
+      "sha256_cert_fingerprints": [
+        "CE:F7:2E:17:70:40:91:F0:AD:2F:46:EC:6F:C9:75:A8:5C:D6:6A:FB:DA:57:86:72:06:74:CE:AA:7D:A2:02:42"
+      ]
+    }
+  }
+]
