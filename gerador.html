@@ -136,7 +136,7 @@ const $ = id => document.getElementById(id);
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const CHAVE_SEGREDO = 'gerador_segredo';
 // Endereço do app (troque aqui se um dia mudar o domínio):
-const APP_URL = 'https://www.esquadsolution.com.br/medicao.html';
+const APP_URL = 'https://medicao.esquadsolution.com.br/medicao.html';
 let privKey = null, diasSel = 30, _cont = null, modo = 'dias';
 
 function iniciarContagem(act) {
