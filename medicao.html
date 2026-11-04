@@ -1664,69 +1664,78 @@ $('drawLiberar').onclick = () => travarDesenho(false);
 $('drawParar').onclick = () => travarDesenho(true);
 // Ditado por voz (🎤) nos campos de texto do editor: usa o reconhecimento de fala do Chrome (pt-BR, precisa de internet).
 // O texto falado entra no fim do que já estiver escrito. Tocar de novo para parar.
-// Um reconhecedor SÓ, reaproveitado (no Android criar vários costuma travar o 2º uso) e em modo
-// "uma frase por toque" (continuous=false): termina sozinho quando você para de falar.
-let ditado = null;   // { btn, campo, base, fim } da gravação atual
-let recVoz = null;
-function avisoDitado(t) {
+// Ditado por voz. No Android, logo depois de uma gravação o microfone ainda está sendo liberado e uma
+// nova gravação começa e é cancelada na hora ("aborted"). Por isso: reconhecedor NOVO a cada toque,
+// espera o microfone liberar (≥ 0,8 s desde o fim da anterior), tenta de novo sozinho uma vez se for
+// cancelada sem ouvir nada e, se ainda assim falhar, abre o teclado no campo p/ usar o 🎤 do teclado.
+let ditado = null;   // { btn, campo, base, fim, ouviu, tent } da gravação atual
+let recVoz = null, ditadoFimEm = 0;
+function avisoDitado(t, ms) {
   const el = $('ditadoAviso'); if (!el) return;
   el.textContent = t || ''; el.style.display = t ? 'block' : 'none';
-  clearTimeout(avisoDitado._t); if (t) avisoDitado._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
+  clearTimeout(avisoDitado._t); if (t) avisoDitado._t = setTimeout(() => { el.style.display = 'none'; }, ms || 6000);
 }
 function fimDitado(d) {
   if (!d || d.fim) return; d.fim = true; clearTimeout(d.vigia);
-  d.btn.classList.remove('ouvindo');
+  ditadoFimEm = Date.now();
   if (ditado === d) ditado = null;
+  // cancelada pelo Android sem ouvir nada: tenta de novo uma vez, depois cai p/ o teclado
+  if (d.cancelada && !d.ouviu && !d.parou) {
+    if (d.tent < 2) { setTimeout(() => comecarDitado(d.btn, d.tent + 1), 900); return; }
+    d.btn.classList.remove('ouvindo');
+    d.campo.focus(); try { const n = d.campo.value.length; d.campo.setSelectionRange(n, n); } catch (e) { }
+    avisoDitado('O microfone do app não respondeu. Use o 🎤 do teclado, que já abriu no campo.', 8000);
+    return;
+  }
+  d.btn.classList.remove('ouvindo');
   if ($('ditadoAviso').textContent.startsWith('🎤')) avisoDitado('');
   if (d.prox) { const nb = d.prox; d.prox = null; setTimeout(() => iniciarDitado(nb), 200); }
 }
 function pararDitado() {
   const d = ditado; if (!d) return;
-  try { recVoz.stop(); } catch (e) { }
-  clearTimeout(d.vigia); d.vigia = setTimeout(() => { log('Ditado: sem "fim" do Android, liberando.'); try { recVoz.abort(); } catch (e) { } fimDitado(d); }, 1500);
-}
-function criarRec() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return null;
-  const rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-  rec.onstart = () => log('Ditado: ouvindo');
-  rec.onresult = ev => {
-    const d = ditado; if (!d || d.fim) return;
-    let txt = '';
-    for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
-    let v = [d.base, txt.trim()].filter(Boolean).join(' ');
-    if (d.campo.id === 'dcDesc' || d.campo.id === 'dcLinha') v = v.toUpperCase();
-    d.campo.value = v;
-  };
-  rec.onerror = ev => {
-    log('Ditado erro: ' + ev.error);
-    const m = { 'not-allowed': 'Microfone bloqueado: permita o microfone para este site (cadeado ao lado do endereço, no Chrome).',
-      'service-not-allowed': 'Microfone bloqueado: permita o microfone para este site.',
-      'audio-capture': 'O microfone está ocupado (teclado por voz ou outro app). Feche o teclado e toque no 🎤 de novo.',
-      'network': 'O ditado precisa de internet.', 'no-speech': 'Não ouvi nada. Toque no 🎤 e fale de novo.' }[ev.error];
-    if (m) avisoDitado(m);
-  };
-  rec.onend = () => { log('Ditado: fim'); fimDitado(ditado); };
-  return rec;
+  d.parou = true;
+  try { d.rec.stop(); } catch (e) { }
+  clearTimeout(d.vigia); d.vigia = setTimeout(() => { log('Ditado: sem "fim" do Android, liberando.'); try { d.rec.abort(); } catch (e) { } fimDitado(d); }, 1500);
 }
 function iniciarDitado(btn) {
-  if (!recVoz) recVoz = criarRec();
-  if (!recVoz) { dialogo({ tipo: 'avisar', titulo: 'Ditado indisponível', texto: 'Este navegador não reconhece fala. Use o Google Chrome no Android, ou o microfone do próprio teclado do celular.' }); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { dialogo({ tipo: 'avisar', titulo: 'Ditado indisponível', texto: 'Este navegador não reconhece fala. Use o microfone do próprio teclado do celular.' }); return; }
   if (ditado) { // tocar no mesmo 🎤 = parar; noutro = parar e começar o novo quando o anterior terminar
     if (ditado.btn !== btn) ditado.prox = btn;
     pararDitado(); return;
   }
+  if (document.querySelector('.micBtn.ouvindo')) return; // já está começando (esperando o microfone liberar)
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // o teclado disputa o microfone
+  btn.classList.add('ouvindo'); avisoDitado('🎤 Um instante…');
+  const espera = Math.max(0, 800 - (Date.now() - ditadoFimEm));
+  setTimeout(() => comecarDitado(btn, 1), espera);
+}
+function comecarDitado(btn, tent) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const campo = $(btn.dataset.ditar);
-  const d = ditado = { btn, campo, base: campo.value.trim(), fim: false };
-  btn.classList.add('ouvindo'); avisoDitado('🎤 Pode falar… (para sozinho quando você parar de falar)');
-  try { recVoz.start(); }
-  catch (e) { // ainda preso na gravação anterior: solta e tenta de novo uma vez
-    log('Ditado start: ' + e.message);
-    try { recVoz.abort(); } catch (e2) { }
-    recVoz = criarRec();
-    try { recVoz.start(); } catch (e3) { log('Ditado start 2: ' + e3.message); fimDitado(d); avisoDitado('Não consegui ligar o microfone. Toque no 🎤 de novo.'); }
-  }
+  const rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  const d = ditado = { btn, campo, rec, base: campo.value.trim(), fim: false, ouviu: false, tent };
+  btn.classList.add('ouvindo');
+  rec.onstart = () => { log('Ditado: ouvindo' + (tent > 1 ? ' (tentativa ' + tent + ')' : '')); avisoDitado('🎤 Pode falar… (para sozinho quando você parar de falar)'); };
+  rec.onresult = ev => {
+    if (d.fim) return; d.ouviu = true;
+    let txt = '';
+    for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+    let v = [d.base, txt.trim()].filter(Boolean).join(' ');
+    if (campo.id === 'dcDesc' || campo.id === 'dcLinha') v = v.toUpperCase();
+    campo.value = v;
+  };
+  rec.onerror = ev => {
+    log('Ditado erro: ' + ev.error);
+    if (ev.error === 'aborted' || ev.error === 'audio-capture') { d.cancelada = true; return; }
+    const m = { 'not-allowed': 'Microfone bloqueado: permita o microfone para este site (cadeado ao lado do endereço, no Chrome).',
+      'service-not-allowed': 'Microfone bloqueado: permita o microfone para este site.',
+      'network': 'O ditado precisa de internet.', 'no-speech': 'Não ouvi nada. Toque no 🎤 e fale de novo.' }[ev.error];
+    if (m) avisoDitado(m);
+  };
+  rec.onend = () => { log('Ditado: fim'); fimDitado(d); };
+  try { rec.start(); }
+  catch (e) { log('Ditado start: ' + e.message); d.cancelada = true; fimDitado(d); }
 }
 document.querySelectorAll('[data-ditar]').forEach(btn => btn.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); iniciarDitado(btn); }));
 // tocar para digitar noutro campo enquanto dita: encerra o ditado (o teclado ia tomar o microfone)
