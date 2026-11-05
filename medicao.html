@@ -225,6 +225,11 @@
   #drawParar { position: absolute; right: 8px; top: 8px; font-size: 13px; padding: 7px 11px; background: rgba(17,24,39,.75); display: none; }
   #drawBox.travado #drawLiberar { display: block; }
   #drawBox:not(.travado) #drawParar { display: block; }
+  #drawFerr { position: absolute; left: 8px; top: 8px; display: none; gap: 6px; }
+  #drawBox:not(.travado) #drawFerr { display: flex; }
+  #drawFerr button { font-size: 13px; min-width: 38px; padding: 7px 11px; background: rgba(17,24,39,.75); }
+  #drawFerr button.on { background: #4f46e5; }
+  #drawFerr button:disabled { opacity: .45; }
   /* Painel de configurações */
   #config { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
   #configTopo { background: var(--grad); color: #fff; padding: calc(14px + env(safe-area-inset-top, 0px)) 14px 14px; display: flex; align-items: center; justify-content: space-between; }
@@ -373,7 +378,8 @@
   </div>
   <div id="drawWrap"><div id="drawBox"><canvas id="drawCanvas"></canvas>
     <button type="button" id="drawLiberar">✏️ Desenhar à mão</button>
-    <button type="button" id="drawParar">✋ Parar de desenhar</button></div></div>
+    <button type="button" id="drawParar">✋ Parar de desenhar</button>
+    <div id="drawFerr"><button type="button" id="drawDesfazer" title="Desfazer o último traço" disabled>↶</button><button type="button" id="drawAssist">📐 Assistido</button></div></div></div>
 </div>
 
 <!-- Configurações (chave da trena D5T) -->
@@ -1566,6 +1572,7 @@ function prepararCanvas() {
   drawCtx = cv.getContext('2d');
   drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height);
   drawCtx.strokeStyle = '#111'; drawCtx.lineWidth = 3; drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+  zerarAssistido();
 }
 function abrirDesenho() {
   editIndex = null;
@@ -1747,7 +1754,7 @@ function comecarDitado(btn, tent) {
 document.querySelectorAll('[data-ditar]').forEach(btn => btn.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); iniciarDitado(btn); }));
 // tocar para digitar noutro campo enquanto dita: encerra o ditado (o teclado ia tomar o microfone)
 $('drawCampos').addEventListener('focusin', ev => { if (ditado && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) pararDitado(); });
-$('drawLimpar').onclick = () => { const cv = $('drawCanvas'); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); };
+$('drawLimpar').onclick = () => { const cv = $('drawCanvas'); guardarDesfazer(); drawCtx.fillStyle = '#fff'; drawCtx.fillRect(0, 0, cv.width, cv.height); formas = []; };
 $('drawCancelar').onclick = () => { pararDitado(); editIndex = null; fecharModoExtra(); $('draw').style.display = 'none'; };
 $('dcLMedir').onclick = () => { alvoExtra = 'L'; $('dcLMedir').classList.add('armado'); $('dcAMedir').classList.remove('armado'); status('Meça com a trena — vai para a Largura.'); };
 $('dcAMedir').onclick = () => { alvoExtra = 'A'; $('dcAMedir').classList.add('armado'); $('dcLMedir').classList.remove('armado'); status('Meça com a trena — vai para a Altura.'); };
@@ -1776,12 +1783,171 @@ $('drawSalvar').onclick = () => { pararDitado();
   salvarComAviso(); desenharAnexos();
   status(anexos.length + ' anexo(s). Toque em "Gerar PDF" quando terminar.');
 };
+// ---------- Desenho assistido (pedido do Vitor 05/11) ----------
+// Ao tirar o dedo, o traço é reconhecido: quase reto vira linha reta (e exatamente horizontal/vertical
+// se estiver perto disso), poucos trechos retos viram linhas quebradas, contorno fechado de 4 lados vira
+// retângulo, redondo vira círculo/elipse. As pontas grudam em pontas/linhas já desenhadas.
+// Curvas livres ficam como foram desenhadas. Botão "📐 Assistido" liga/desliga; "↶ Desfazer" volta o último traço.
+let tracoPts = [], formas = [], pilhaDesfazer = [];
+let desenhoAssistido = (() => { try { return localStorage.getItem('desenho_assistido') !== '0'; } catch (e) { return true; } })();
+function atualizarBotoesDesenho() {
+  $('drawAssist').classList.toggle('on', desenhoAssistido);
+  $('drawAssist').textContent = desenhoAssistido ? '📐 Assistido' : '✍️ Livre';
+  $('drawDesfazer').disabled = !pilhaDesfazer.length;
+}
+function zerarAssistido() { tracoPts = []; formas = []; pilhaDesfazer = []; atualizarBotoesDesenho(); }
+function guardarDesfazer() {
+  const cv = $('drawCanvas');
+  pilhaDesfazer.push({ img: drawCtx.getImageData(0, 0, cv.width, cv.height), formas: formas.slice() });
+  if (pilhaDesfazer.length > 8) pilhaDesfazer.shift();  // cada passo ocupa ~5,6 MB de memória
+  atualizarBotoesDesenho();
+}
+$('drawDesfazer').onclick = () => { const u = pilhaDesfazer.pop(); if (!u) return; drawCtx.putImageData(u.img, 0, 0); formas = u.formas; atualizarBotoesDesenho(); };
+$('drawAssist').onclick = () => { desenhoAssistido = !desenhoAssistido; try { localStorage.setItem('desenho_assistido', desenhoAssistido ? '1' : '0'); } catch (e) {} atualizarBotoesDesenho();
+  status(desenhoAssistido ? 'Desenho assistido ligado: linhas ficam retas e se conectam.' : 'Desenho assistido desligado: traço livre.'); };
+atualizarBotoesDesenho();
+
+const gDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function gDistSeg(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  let t = l2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+  return { d: Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy), q: { x: a.x + t * dx, y: a.y + t * dy }, t };
+}
+function gRdp(pts, eps) {   // Ramer–Douglas–Peucker: reduz o traço aos cantos
+  if (pts.length < 3) return pts.slice();
+  let iMax = 0, dMax = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = gDistSeg(pts[i], pts[0], pts[pts.length - 1]).d; if (d > dMax) { dMax = d; iMax = i; } }
+  if (dMax <= eps) return [pts[0], pts[pts.length - 1]];
+  const a = gRdp(pts.slice(0, iMax + 1), eps), b = gRdp(pts.slice(iMax), eps);
+  return a.slice(0, -1).concat(b);
+}
+function gComprimento(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += gDist(pts[i - 1], pts[i]); return L; }
+// Deixa um segmento exatamente horizontal/vertical (ou 45°) se estiver a poucos graus disso. Mantém o ponto a.
+function gEndireitar(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy); if (!L) return b;
+  const ang = Math.atan2(dy, dx), passo = Math.PI / 4;
+  const alvo = Math.round(ang / passo) * passo, tol = (Math.round(ang / passo) % 2 === 0) ? 9 : 6; // 0/90° mais "puxam" que 45°
+  if (Math.abs(ang - alvo) * 180 / Math.PI > tol) return b;
+  const r = { x: a.x + L * Math.cos(alvo), y: a.y + L * Math.sin(alvo) };
+  if (Math.abs(r.x - a.x) < 1e-6) r.x = a.x; if (Math.abs(r.y - a.y) < 1e-6) r.y = a.y;
+  return r;
+}
+const G_RAIO = 40;   // distância (px da folha de 1000) em que a ponta gruda em algo já desenhado
+// Gruda a ponta p numa ponta/canto já existente; senão, numa linha existente (mantendo a direção se for horizontal/vertical).
+function gGrudar(p, outro) {
+  let melhor = null, dm = G_RAIO;
+  formas.forEach(s => [s.a, s.b].forEach(q => { const d = gDist(p, q); if (d < dm) { dm = d; melhor = { x: q.x, y: q.y }; } }));
+  if (melhor) {
+    // linha horizontal/vertical chegando num canto quase alinhado: mantém a linha reta (como no desenho técnico)
+    if (outro && Math.abs(outro.y - p.y) < 0.5 && Math.abs(melhor.y - p.y) <= 15) melhor.y = p.y;
+    else if (outro && Math.abs(outro.x - p.x) < 0.5 && Math.abs(melhor.x - p.x) <= 15) melhor.x = p.x;
+    return melhor;
+  }
+  dm = G_RAIO;
+  formas.forEach(s => {
+    const r = gDistSeg(p, s.a, s.b); if (r.d >= dm) return;
+    let q = r.q;
+    if (outro) {   // linha horizontal/vertical: estica/encurta até cruzar a linha existente, sem entortar
+      if (Math.abs(outro.y - p.y) < 0.5 && Math.abs(s.b.y - s.a.y) > 1e-6) {
+        const t = (p.y - s.a.y) / (s.b.y - s.a.y); if (t >= -0.05 && t <= 1.05) q = { x: s.a.x + t * (s.b.x - s.a.x), y: p.y };
+      } else if (Math.abs(outro.x - p.x) < 0.5 && Math.abs(s.b.x - s.a.x) > 1e-6) {
+        const t = (p.x - s.a.x) / (s.b.x - s.a.x); if (t >= -0.05 && t <= 1.05) q = { x: p.x, y: s.a.y + t * (s.b.y - s.a.y) };
+      }
+    }
+    if (gDist(p, q) < dm) { dm = gDist(p, q); melhor = q; }
+  });
+  return melhor || p;
+}
+// Reconhece o traço. Devolve {tipo:'poli', pts, fechado} | {tipo:'elipse', cx, cy, rx, ry} | null (deixar livre).
+function reconhecerTraco(pts) {
+  if (pts.length < 3) return null;
+  const L = gComprimento(pts); if (L < 25) return null;
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const diag = Math.hypot(x1 - x0, y1 - y0);
+  const ini = pts[0], fim = pts[pts.length - 1];
+  const fechado = L > 150 && gDist(ini, fim) < Math.max(45, 0.18 * diag);
+  if (fechado) {
+    // círculo/elipse? (desvio médio do raio normalizado pequeno)
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+    if (rx > 10 && ry > 10) {
+      let dev = 0; pts.forEach(p => { dev += Math.abs(Math.hypot((p.x - cx) / rx, (p.y - cy) / ry) - 1); }); dev /= pts.length;
+      const cantos = gRdp(pts, Math.max(14, 0.08 * diag)).length - 1;
+      if (dev < 0.11 && cantos >= 5) {
+        const r = (rx + ry) / 2;
+        return Math.abs(rx - ry) / r < 0.18 ? { tipo: 'elipse', cx, cy, rx: r, ry: r } : { tipo: 'elipse', cx, cy, rx, ry };
+      }
+    }
+    let v = gRdp(pts, Math.max(14, 0.06 * diag)); v.pop();   // tira o ponto final (≈ inicial)
+    if (v.length >= 3 && v.length <= 8) {
+      // 4 lados quase em pé/deitados → retângulo perfeito
+      if (v.length === 4) {
+        const reto = v.every((p, i) => { const q = v[(i + 1) % 4], a = Math.abs(Math.atan2(q.y - p.y, q.x - p.x) * 180 / Math.PI) % 90; return Math.min(a, 90 - a) < 14; });
+        if (reto) return { tipo: 'poli', fechado: true, pts: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] };
+      }
+      const out = [v[0]]; for (let i = 1; i < v.length; i++) out.push(gEndireitar(out[i - 1], v[i]));
+      return { tipo: 'poli', fechado: true, pts: out };
+    }
+    return null;
+  }
+  // aberto: linha reta?
+  const corda = gDist(ini, fim);
+  let desvio = 0; pts.forEach(p => { desvio = Math.max(desvio, gDistSeg(p, ini, fim).d); });
+  if (corda > 20 && desvio < Math.max(10, 0.07 * corda)) return { tipo: 'poli', fechado: false, pts: [ini, fim] };
+  // linha quebrada (L, U, degrau...): poucos trechos, todos retos
+  // (critério rígido p/ não transformar curva em zigue-zague: cada trecho bem reto, ≥ 40 px, e cantos bem marcados)
+  const v = gRdp(pts, Math.max(7, 0.025 * diag));
+  if (v.length >= 3 && v.length <= 5 && gComprimento(v) > 0.93 * L) {
+    const trechosOk = v.slice(1).every((q, i) => gDist(v[i], q) >= 40);
+    const cantosOk = v.slice(1, -1).every((q, i) => {
+      const a = v[i], c = v[i + 2], a1 = Math.atan2(q.y - a.y, q.x - a.x), a2 = Math.atan2(c.y - q.y, c.x - q.x);
+      let d = Math.abs(a2 - a1) * 180 / Math.PI; if (d > 180) d = 360 - d; return d > 35;
+    });
+    if (trechosOk && cantosOk) return { tipo: 'poli', fechado: false, pts: v };
+  }
+  return null;
+}
+function finalizarTraco() {
+  const pts = tracoPts; tracoPts = [];
+  if (!desenhoAssistido || !pilhaDesfazer.length) return;
+  const f = reconhecerTraco(pts); if (!f) return;
+  // apaga o traço cru (volta a folha de antes do traço) e desenha a forma limpa
+  drawCtx.putImageData(pilhaDesfazer[pilhaDesfazer.length - 1].img, 0, 0);
+  drawCtx.beginPath();
+  if (f.tipo === 'elipse') {
+    drawCtx.ellipse(f.cx, f.cy, f.rx, f.ry, 0, 0, Math.PI * 2);
+  } else {
+    let v = f.pts.map(p => ({ x: p.x, y: p.y }));
+    if (!f.fechado) {
+      for (let i = 1; i < v.length; i++) v[i] = gEndireitar(v[i - 1], v[i]);
+      const n = v.length - 1;
+      v[0] = gGrudar(v[0], v[1]);
+      if (n === 1) { const e = gEndireitar(v[0], v[1]); v[1] = gGrudar(e, v[0]); }
+      else v[n] = gGrudar(v[n], v[n - 1]);
+    } else {
+      // canto do contorno perto de algo já desenhado também gruda
+      v = v.map(p => gGrudar(p, null));
+    }
+    drawCtx.moveTo(v[0].x, v[0].y);
+    for (let i = 1; i < v.length; i++) drawCtx.lineTo(v[i].x, v[i].y);
+    if (f.fechado) drawCtx.closePath();
+    const segs = []; for (let i = 1; i < v.length; i++) segs.push({ a: v[i - 1], b: v[i] });
+    if (f.fechado) segs.push({ a: v[v.length - 1], b: v[0] });
+    formas.push(...segs);
+  }
+  drawCtx.stroke();
+}
 (() => {
   const cv = $('drawCanvas');
-  cv.addEventListener('pointerdown', ev => { if (desenhoTravado) return; ev.preventDefault(); desenhando = true; const p = posCanvas(ev); drawCtx.beginPath(); drawCtx.moveTo(p.x, p.y); });
-  cv.addEventListener('pointermove', ev => { if (!desenhando || desenhoTravado) return; ev.preventDefault(); const p = posCanvas(ev); drawCtx.lineTo(p.x, p.y); drawCtx.stroke(); });
-  window.addEventListener('pointerup', () => { desenhando = false; });
-  window.addEventListener('pointercancel', () => { desenhando = false; });
+  cv.addEventListener('pointerdown', ev => { if (desenhoTravado) return; ev.preventDefault(); desenhando = true; const p = posCanvas(ev);
+    guardarDesfazer(); tracoPts = [p]; drawCtx.beginPath(); drawCtx.moveTo(p.x, p.y); });
+  cv.addEventListener('pointermove', ev => { if (!desenhando || desenhoTravado) return; ev.preventDefault();
+    const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
+    (evs.length ? evs : [ev]).forEach(e => { const p = posCanvas(e); tracoPts.push(p); drawCtx.lineTo(p.x, p.y); });
+    drawCtx.stroke(); });
+  const fimTraco = () => { if (!desenhando) return; desenhando = false; finalizarTraco(); };
+  window.addEventListener('pointerup', fimTraco);
+  window.addEventListener('pointercancel', fimTraco);
 })();
 
 // ---------- Itens extras (inclusões no fim do caderno) ----------
