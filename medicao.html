@@ -294,7 +294,6 @@
   <div class="linha">
     <button data-escopo="es" class="cl">Esquadrias</button>
     <button data-escopo="cm" class="cl">Contramarcos</button>
-    <button data-escopo="ambos" class="cl">Os dois</button>
   </div>
   <div style="font-size:12px;color:#6b7280">Aparecem só os campos de medida da sua escolha. Pode trocar depois; as medidas de cada tipo ficam guardadas.</div>
 </div>
@@ -729,7 +728,7 @@ function salvarComAviso() {
 function carregarSalvo() {
   try {
     const s = JSON.parse(localStorage.getItem(chaveObra()) || 'null');
-    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = s.escopo || null; anexos = s.anexos || []; ordemIds = s.ordem || []; extras = s.extras || []; }
+    if (s) { medidas = s.medidas || {}; obs = s.obs || {}; flags = s.flags || {}; escopo = (s.escopo === 'es' || s.escopo === 'cm') ? s.escopo : null; /* 'Os dois' saiu em 05/11: obra antiga nele pede para escolher de novo */ anexos = s.anexos || []; ordemIds = s.ordem || []; extras = s.extras || []; }
   } catch (e) { }
 }
 
@@ -932,7 +931,7 @@ function desenharTudo() {
   });
   const box = $('itens');
   box.innerHTML = '';
-  if (!escopo) { box.innerHTML = tem ? '<div class="item" style="color:#6b7280">Escolha acima: <b>Esquadrias</b>, <b>Contramarcos</b> ou <b>Os dois</b> para começar a medir.</div>' : ''; return; }
+  if (!escopo) { box.innerHTML = tem ? '<div class="item" style="color:#6b7280">Escolha acima: <b>Esquadrias</b> ou <b>Contramarcos</b> para começar a medir.</div>' : ''; return; }
   if (obra.nova && !extras.length) box.innerHTML = '<div class="item" style="color:#6b7280">Toque em <b>➕ Incluir esquadria</b> (logo abaixo) para cada esquadria da obra: desenho ou "conforme projeto", medidas' + (MODO === 'orc' ? '' : ' e flags') + ', igual ao caderno.</div>';
   const CPS = campos();
   itens.forEach((it, i) => {
@@ -2046,7 +2045,7 @@ function desenharCartoesObra(g) {
 }
 $('btnIncluirExtra').onclick = () => {
   if (escopo !== 'es' && escopo !== 'cm' && escopo !== 'ambos') {
-    status('Escolha primeiro Esquadrias, Contramarcos ou Os dois para incluir ' + (obra.nova ? 'uma esquadria.' : 'um item extra.'));
+    status('Escolha primeiro Esquadrias ou Contramarcos para incluir ' + (obra.nova ? 'uma esquadria.' : 'um item extra.'));
     return;
   }
   abrirExtraDesenho(null);
