@@ -1,7 +1,7 @@
 {
-  "name": "Medição de Esquadrias",
-  "short_name": "Medição",
-  "description": "Medição de esquadrias com trena laser Bluetooth: preenche o caderno de medição e gera proposta comercial.",
+  "name": "Medição de obra",
+  "short_name": "Medição de obra",
+  "description": "Medição de obra (esquadrias) com trena laser Bluetooth: preenche o caderno de medição e gera proposta comercial.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
