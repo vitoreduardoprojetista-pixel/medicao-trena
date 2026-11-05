@@ -1017,6 +1017,12 @@ function adicionarMedida(mm) {
     if (navigator.vibrate) navigator.vibrate(80);
     return;
   }
+  // Tela de flags aberta: a medida nunca vai para a largura/altura que ficou selecionada atrás dela.
+  if (wiz && $('wiz').style.display !== 'none') {
+    status('Medida recebida (' + mm + ' mm), mas nenhum campo desta tela está selecionado. Toque no campo ou em 📏 Medir e meça de novo.');
+    if (navigator.vibrate) navigator.vibrate([60, 60, 60]);
+    return;
+  }
   if (!ativo) { status('Medida recebida (' + mm + ' mm), mas nenhum campo está selecionado. Toque num campo.'); return; }
   const k = chave(ativo.i, ativo.u, ativo.c);
   if ((medidas[k] || []).length >= MAX_MEDIDAS) { // o campo do PDF é pequeno: acima disso os números se misturam
@@ -1119,12 +1125,15 @@ function wizRender() {
     if (v) f[fid] = v; else delete f[fid];
     salvar();
   });
-  corpo.querySelectorAll('[data-medir]').forEach(el => el.onclick = () => {
-    alvoAlv = { id: idf, fid: el.dataset.medir };
-    corpo.querySelectorAll('[data-medir]').forEach(b => b.classList.toggle('armado', b === el));
-    const rot = (sec.ops.find(o => o[0] === el.dataset.medir) || [, el.dataset.medir])[1];
+  // Tocar no botão 📏 Medir OU no próprio campo arma o campo para a próxima medida da trena.
+  const armarAlv = fid => {
+    alvoAlv = { id: idf, fid };
+    corpo.querySelectorAll('[data-medir]').forEach(b => b.classList.toggle('armado', b.dataset.medir === fid));
+    const rot = (sec.ops.find(o => o[0] === fid) || [, fid])[1];
     status('Meça com a trena — vai para "' + rot + '".');
-  });
+  };
+  corpo.querySelectorAll('[data-medir]').forEach(el => el.onclick = () => armarAlv(el.dataset.medir));
+  corpo.querySelectorAll('[data-val]').forEach(el => el.onfocus = () => armarAlv(el.dataset.val));
   const ultimoPasso = wiz.s === totalPassos - 1;
   $('wizProximo').textContent = ultimoPasso ? 'Concluir ✓' : 'Próximo ▶';
   $('wizVoltar').textContent = wiz.s === 0 ? 'Fechar' : '◀ Voltar';
