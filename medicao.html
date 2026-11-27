@@ -58,6 +58,7 @@
   #dlgTxt { font-size: 14px; color: #374151; white-space: pre-wrap; word-break: break-word; }
   #dlgInput { display: none; width: 100%; box-sizing: border-box; font-size: 18px; padding: 10px 12px; border: 1.5px solid var(--line2); border-radius: 10px; margin-top: 12px; }
   #dlgSim.perigo { background: var(--danger); }
+  .prontoArq { margin-bottom: 14px; } .prontoArq + .prontoArq { border-top: 1px solid var(--line); padding-top: 14px; }
   #pronto { position: fixed; inset: 0; background: rgba(17,24,39,.55); z-index: 70; display: none; align-items: center; justify-content: center; padding: 20px; }
   .prontoCard { background: #fff; border-radius: 18px; padding: 22px 18px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
   #nova { position: fixed; inset: 0; background: var(--bg); z-index: 55; display: none; flex-direction: column; }
@@ -367,8 +368,8 @@
   <div id="ditadoAviso"></div>
   <div id="extraFinal">
     <span>Finalidade:</span>
-    <button type="button" id="finOrc" class="fin on">Para orçamento</button>
-    <button type="button" id="finFab" class="fin">Para fabricação</button>
+    <button type="button" id="finFab" class="fin">Para produção</button>
+    <button type="button" id="finOrc" class="fin">Para orçamento</button>
   </div>
   <div id="drawAcoes">
     <button id="drawLimpar" class="cl">Limpar</button>
@@ -420,9 +421,7 @@
   <div class="prontoCard">
     <div style="font-size:40px">✅</div>
     <div style="font-size:18px;font-weight:800;margin:4px 0">PDF pronto</div>
-    <div id="prontoNome" style="font-size:13px;color:#6b7280;word-break:break-word;margin-bottom:14px"></div>
-    <button id="prontoEnviar" class="ok" style="width:100%">📤 Enviar / compartilhar</button>
-    <button id="prontoSalvar" class="sec" style="width:100%;margin-top:8px">⬇ Salvar no celular</button>
+    <div id="prontoLista"></div>
     <button id="prontoFechar" class="cl" style="width:100%;margin-top:8px">Fechar</button>
     <div id="prontoMsg" style="font-size:13px;color:#059669;margin-top:10px"></div>
   </div>
@@ -1570,7 +1569,7 @@ $('fotoInput').onchange = async e => {
 let drawCtx = null, desenhando = false, editIndex = null;
 let drawExtra = null;   // null = croqui/anexo normal; { ex } quando o desenho é de um item extra (ex=null se novo)
 let alvoExtra = null;   // 'L' | 'A': campo do item extra armado p/ receber a próxima medida da trena
-let drawFinalidade = 'orc';  // 'orc' | 'fab' do item extra em edição
+let drawFinalidade = null;   // 'orc' | 'fab' do item extra em edição (null = ainda não escolheu)
 const DC_IDS = ['dcL', 'dcA', 'dcQt', 'dcLoc', 'dcPeit', 'dcObs', 'dcTipo', 'dcDesc', 'dcLinha'];
 function setFinalidade(f) { drawFinalidade = f; $('finOrc').classList.toggle('on', f === 'orc'); $('finFab').classList.toggle('on', f === 'fab'); }
 function fecharModoExtra() { drawExtra = null; alvoExtra = null; $('draw').classList.remove('modoExtra'); $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado'); }
@@ -1619,7 +1618,8 @@ function abrirExtraDesenho(ex) {
   $('draw').classList.add('modoExtra');
   $('dcLMedir').classList.remove('armado'); $('dcAMedir').classList.remove('armado');
   $('drawTitulo').textContent = obra.nova ? (ex ? 'Editar esquadria' : 'Nova esquadria') : (ex ? 'Editar item extra' : 'Novo item extra');
-  setFinalidade(MODO === 'cad' ? ((ex && ex.finalidade) || 'orc') : MODO);
+  // caderno padrão: item novo começa SEM finalidade — produção vai no caderno, orçamento vai num PDF à parte (pedido 27/11)
+  setFinalidade(MODO === 'cad' ? ((ex && ex.finalidade) || null) : MODO);
   prepararCanvas();
   preencherCampos(ex && ex.campos);
   // Tipo do item adicional: sugere ADC-01, ADC-02... pela ordem, mas fica editável.
@@ -1773,6 +1773,7 @@ $('drawSalvar').onclick = () => { pararDitado();
   const base = $('drawCanvas').toDataURL('image/png');
   const data = comporDesenho($('drawCanvas'), campos);
   if (drawExtra) {
+    if (!drawFinalidade) { dialogo({ tipo: 'avisar', titulo: 'Para produção ou para orçamento?', texto: 'Escolha a finalidade do item antes de salvar. Itens "para produção" saem no caderno; itens "para orçamento" saem num PDF separado, para o setor de orçamentos.' }); return; }
     // Item extra: cria/atualiza e segue para as flags.
     let ex = drawExtra.ex;
     if (ex) { ex.data = data; ex.base = base; ex.campos = campos; ex.finalidade = drawFinalidade; ex.escopo = escopo; }
@@ -1975,7 +1976,7 @@ function desenharExtras() {
   const bar = $('extrasBar');
   if (!bar) return;
   bar.style.display = (itens.length || obra.nova) ? 'block' : 'none';
-  $('extrasTit').textContent = obra.nova ? 'Esquadrias da obra' : 'Itens extras (incluídos no fim do caderno)';
+  $('extrasTit').textContent = obra.nova ? 'Esquadrias da obra' : 'Itens adicionais (produção sai no caderno; orçamento sai num PDF à parte)';
   $('btnIncluirExtra').textContent = obra.nova ? '➕ Incluir esquadria' : '➕ Incluir item extra';
   const g = $('extrasGaleria');
   g.innerHTML = '';
@@ -1984,7 +1985,7 @@ function desenharExtras() {
   if (obra.nova) { desenharCartoesObra(g); return; }
   extras.forEach((ex, k) => {
     const c = ex.campos || {};
-    const fin = ex.finalidade === 'fab' ? 'fabric.' : 'orçam.';
+    const fin = ex.finalidade === 'fab' ? 'produção' : 'orçamento';
     const legenda = (c.tipo || tipoPadrao(k)) + ' · ' + (c.loc || 'Item ' + (k + 1)) + (c.L || c.A ? ` · ${c.L || '—'}×${c.A || '—'}` : '') + ` · ${fin}`;
     const nf = flagsResumo(ex.id).length;
     const d = document.createElement('div');
@@ -2121,16 +2122,18 @@ async function gerarPdf() {
 
   // 4) itens extras no formato do caderno (carimbo de um item real, uma linha de medida por unidade) e
   //    depois os croquis/fotos, inseridos logo DEPOIS da última página de esquadria (antes da assinatura).
+  //    Só os itens "para produção": os "para orçamento" vão num PDF à parte (gerarPdfOrcamento).
+  const prod = extras.filter(ex => ex.finalidade !== 'orc');
   const base = paginas[0] ? paginas[0].getSize() : { width: 595, height: 842 };
   const at0 = assinatura ? assinatura.pagina + 1 : doc.getPageCount();
   let at = at0;
-  const moldeDoc = (extras.length || anexos.length) ? await PDFDocument.load(pdfBytes) : null; // molde pristino
-  if (extras.length) {
+  const moldeDoc = (prod.length || anexos.length) ? await PDFDocument.load(pdfBytes) : null; // molde pristino
+  if (prod.length) {
     const molde = escolherMolde(itens);
     if (molde) {
       const K = { doc, fonte, negrito, azul, branco, preto, hoje, centro, marcarX };
       const { width: PW, height: PH } = moldeDoc.getPage(molde.pagina).getSize();
-      await empilharItens(K, moldeDoc.getPage(molde.pagina), molde.slot, extras, () => doc.insertPage(at++, [PW, PH]));
+      await empilharItens(K, moldeDoc.getPage(molde.pagina), molde.slot, prod, () => doc.insertPage(at++, [PW, PH]));
     }
   }
   if (anexos.length) await anexarImagens(doc, fonte, negrito, cinza, base, () => doc.insertPage(at++, [base.width, base.height]));
@@ -2146,7 +2149,110 @@ async function gerarPdf() {
     assPg.drawRectangle({ x: 0, y: 0, width: 595, height: yA - 20, color: branco });                 // some com o resto abaixo
     assPg.drawRectangle({ x: 500, y: 16, width: 92, height: 26, color: branco });                    // rodapé
   }
+  // 5) as folhas finais do caderno impresso (informações complementares / anotações) não saem mais:
+  //    os itens adicionais do app substituem (pedido do Vitor 27/11). Elas são as páginas depois da assinatura.
+  if (assinatura) {
+    const nFim = paginas.length - (assinatura.pagina + 1);
+    for (let k = 0; k < nFim; k++) doc.removePage(doc.getPageCount() - 1);
+  }
+  // 6) numeração "N / total" refeita (páginas entraram e saíram)
+  const nums = await numerosDePagina(pdfBytes);
+  const origem = new Map(paginas.map((p, k) => [p, k]));
+  numerarPaginas(doc, fonte, branco, preto, nums, p => origem.has(p) ? origem.get(p) : null);
   return await doc.save();
+}
+
+// Posição do "N / total" de cada página de um caderno (pdf.js). [[{x,y,w,tam}], ...] por página.
+async function numerosDePagina(bytes) {
+  const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise, r = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const tc = await (await pdf.getPage(p)).getTextContent();
+    r.push(tc.items.filter(it => /^\d+\s*\/\s*\d+$/.test(it.str.trim()))
+      .map(it => ({ x: it.transform[4], y: it.transform[5], w: it.width, tam: Math.abs(it.transform[3]) || it.height || 8 })));
+  }
+  return r;
+}
+// Reescreve "N / total" em todas as páginas menos a capa, no lugar e tamanho do número do caderno.
+// nums = numerosDePagina do original; origemDe(page) = índice da página no original (ou null se é nova).
+function numerarPaginas(doc, fonte, branco, preto, nums, origemDe) {
+  const np = nums.flat()[0]; if (!np) return;
+  const pags = doc.getPages(), total = pags.length;
+  pags.forEach((p, i) => {
+    const o = origemDe ? origemDe(p) : null;
+    if (o != null) for (const t of nums[o] || []) p.drawRectangle({ x: t.x - 1.5, y: t.y - 2.5, width: t.w + 3, height: t.tam + 4, color: branco });
+    if (!i) return; // capa sem número
+    const txt = i + ' / ' + total;
+    p.drawText(txt, { x: np.x + np.w - fonte.widthOfTextAtSize(txt, np.tam), y: np.y, size: np.tam, font: fonte, color: preto });
+  });
+}
+
+// PDF à parte com os itens adicionais "para orçamento" (para o setor de orçamentos): capa e cabeçalho
+// do próprio caderno com o título trocado + os itens no quadro do caderno, como no caderno de produção.
+async function gerarPdfOrcamento(lista) {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const est = await lerEstrutura(pdfBytes);
+  const molde = escolherMolde(est.itens);
+  if (!molde) throw new Error('Não achei no caderno uma esquadria que sirva de modelo para o PDF de orçamento.');
+  const T = est.textos;
+  const it0 = est.itens.reduce((a, b) => (b.pagina < a.pagina || (b.pagina === a.pagina && b.sec['LADO DE ABERTURA'].y > a.sec['LADO DE ABERTURA'].y) ? b : a));
+  const hp = it0.pagina, it0top = it0.sec['LADO DE ABERTURA'].y + 73;
+  const ehNumPag = s => /^\d+\s*\/\s*\d+$/.test(s);
+  const perto = (l, x, y) => l.some(t => Math.abs(t.y - y) < 0.8 && x > t.x - 10 && x < t.x + 0.8);
+  const carregar = () => PDFDocument.load(pdfBytes);
+  const [dCapa, dCab, dCar] = await Promise.all([carregar(), carregar(), carregar()]);
+  const capaTitT = T[0].filter(t => /^(CADERNO DE|MEDIÇÃO|DE ESQUADRIAS)$/i.test(t.s.trim()));
+  const capaNum = T[0].filter(t => ehNumPag(t.s));
+  const capaTir = limparPagina(dCapa, dCapa.getPage(0), (x, y) => perto(capaTitT, x, y) || perto(capaNum, x, y));
+  const cabT = T[hp].filter(t => t.y > it0top);
+  const cabTitT = cabT.filter(t => /^(RELAÇÃO DE ITENS PARA|MEDIÇÃO DE ESQUADRIAS E CONTRAMARCOS)$/i.test(t.s.trim()));
+  const cabNum = cabT.filter(t => ehNumPag(t.s));
+  const cabTir = limparPagina(dCab, dCab.getPage(hp), (x, y) => y <= it0top || perto(cabTitT, x, y) || perto(cabNum, x, y), (e, f) => f < it0top);
+
+  const out = await PDFDocument.create();
+  const fonte = await out.embedFont(StandardFonts.Helvetica), negrito = await out.embedFont(StandardFonts.HelveticaBold);
+  const azul = rgb(0.05, 0.25, 0.75), branco = rgb(1, 1, 1), preto = rgb(0, 0, 0);
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const centro = (pg, txt, f, tam, cx, y, cor) => pg.drawText(txt, { x: cx - f.widthOfTextAtSize(txt, tam) / 2, y, size: tam, font: f, color: cor });
+  const marcarX = (pg, cx, cy) => { const r = 3.6;
+    pg.drawLine({ start: { x: cx - r, y: cy - r }, end: { x: cx + r, y: cy + r }, thickness: 1.4, color: azul });
+    pg.drawLine({ start: { x: cx - r, y: cy + r }, end: { x: cx + r, y: cy - r }, thickness: 1.4, color: azul }); };
+  const K = { doc: out, fonte, negrito, azul, branco, preto, hoje, centro, marcarX };
+  const { width: PW, height: PH } = dCar.getPage(molde.pagina).getSize();
+  // 1) capa: "CADERNO DE / MEDIÇÃO / DE ESQUADRIAS" vira "ITENS ADICIONAIS / PARA / ORÇAMENTO"
+  const [capa] = await out.copyPages(dCapa, [0]); out.addPage(capa);
+  const novoCapa = { 'CADERNO DE': 'ITENS ADICIONAIS', 'MEDIÇÃO': 'PARA', 'DE ESQUADRIAS': 'ORÇAMENTO' };
+  // as 3 linhas no mesmo tamanho (o da linha mais comprida que cabe sem invadir o desenho da capa)
+  let tamCapa = Infinity;
+  for (const t of capaTitT) {
+    const orig = capaTir.filter(o => Math.abs(o.y - t.y) < 1).sort((a, b) => a.x - b.x)[0];
+    const txt = novoCapa[t.s.trim().toUpperCase()] || t.s;
+    let tam = orig ? orig.tam : t.tam; while (tam > 10 && negrito.widthOfTextAtSize(txt, tam) > PW * 0.6 - t.x) tam -= 1;
+    tamCapa = Math.min(tamCapa, tam);
+  }
+  for (const t of capaTitT) {
+    const orig = capaTir.filter(o => Math.abs(o.y - t.y) < 1).sort((a, b) => a.x - b.x)[0];
+    const txt = novoCapa[t.s.trim().toUpperCase()] || t.s;
+    capa.drawText(txt, { x: orig ? orig.x : t.x, y: t.y, size: tamCapa, font: negrito, color: orig ? orig.cor : preto });
+  }
+  // 2) cabeçalho da obra (dados reais do caderno) com o título "ITENS ADICIONAIS / PARA ORÇAMENTO"
+  const pg = out.addPage([PW, PH]);
+  pg.drawPage(await out.embedPage(dCab.getPage(hp), { left: 0, right: PW, bottom: it0top, top: PH }), { x: 0, y: it0top });
+  if (cabTitT.length) {
+    const fIt = await out.embedFont(StandardFonts.HelveticaBoldOblique);
+    const cx = cabTitT.reduce((a, t) => a + t.x + t.w / 2, 0) / cabTitT.length;
+    ['ITENS ADICIONAIS', 'PARA ORÇAMENTO'].forEach((txt, k) => {
+      const t = cabTitT.slice().sort((a, b) => b.y - a.y)[Math.min(k, cabTitT.length - 1)];
+      const orig = cabTir.filter(o => Math.abs(o.y - t.y) < 1)[0];
+      const tam = orig ? orig.tam : t.tam;
+      pg.drawText(txt, { x: cx - fIt.widthOfTextAtSize(txt, tam) / 2, y: t.y, size: tam, font: fIt, color: orig ? orig.cor : preto });
+    });
+  }
+  // 3) os itens, no quadro do caderno
+  await empilharItens(K, dCar.getPage(molde.pagina), molde.slot, lista, () => out.addPage([PW, PH]), { pg, cursor: it0top });
+  // 4) numeração
+  numerarPaginas(out, fonte, branco, preto, T.map(l => l.filter(t => ehNumPag(t.s))), null);
+  out.setTitle('Itens para orçamento - ' + (obra.os || '') + ' - ' + (obra.cliente || ''));
+  return await out.save();
 }
 
 // ---------- Carimbo de item no padrão do caderno (extras e obra nova) ----------
@@ -2209,7 +2315,7 @@ async function carimbarExtra(K, pg, slot, ex, idx, n) {
     for (const u of linhas) limpa(33, 78, u.y);    // eco do tipo (CXxx) nas linhas de medida
   }
   // rótulo no topo da peça
-  const finTxt = ex.finalidade === 'fab' ? 'PARA FABRICAÇÃO' : 'PARA ORÇAMENTO';
+  const finTxt = ex.finalidade === 'fab' ? (MODO === 'cad' ? 'PARA PRODUÇÃO' : 'PARA FABRICAÇÃO') : 'PARA ORÇAMENTO';
   const desc = descComLinha(c), det = detalheTxt(c);
   if (!desc && !det) {
     pg.drawText(finTxt, { x: 171, y: lado.y + 52, size: 12, font: negrito, color: azul });
@@ -2504,7 +2610,7 @@ async function gerarCadernoNovo() {
   const est = await lerEstrutura(mB);
   const molde = escolherMolde(est.itens);
   if (!molde) throw new Error('O caderno-modelo guardado não tem esquadrias reconhecíveis. Abra outro caderno original e tente de novo.');
-  const T = est.textos, nPag = T.length;
+  const T = est.textos;
   const it0 = est.itens.reduce((a, b) => (b.pagina < a.pagina || (b.pagina === a.pagina && b.sec['LADO DE ABERTURA'].y > a.sec['LADO DE ABERTURA'].y) ? b : a));
   const hp = it0.pagina, it0top = it0.sec['LADO DE ABERTURA'].y + 73;     // página e base do cabeçalho da obra
   const sp = molde.pagina, st = molde.slot;
@@ -2523,7 +2629,7 @@ async function gerarCadernoNovo() {
   const naFaixa = (lv, x, y) => perto(lv.vals, x, y) || lv.faixas.some(f => y > f.y0 && y < f.y1 && x > f.x0 && x < f.x1);
   // um documento por papel (capa, cabeçalho, carimbo, assinatura, finais): cada um é limpo do seu jeito
   const carregar = () => PDFDocument.load(mB);
-  const [dCapa, dCab, dCar, dAss, dFim] = await Promise.all([carregar(), carregar(), carregar(), carregar(), carregar()]);
+  const [dCapa, dCab, dCar, dAss] = await Promise.all([carregar(), carregar(), carregar(), carregar()]);
   // capa
   const capaV = valoresDe(T[0]);
   // medição comercial: o título grande da capa ("CADERNO DE / MEDIÇÃO / DE ESQUADRIAS") vira "PROPOSTA COMERCIAL"
@@ -2542,9 +2648,7 @@ async function gerarCadernoNovo() {
   limparPagina(dCar, dCar.getPage(sp), (x, y) => perto(carT, x, y), (e, f) => e < lado.x - 4 || f > topoB || f < baseB);
   // assinatura: só a faixa dela
   if (ap != null) limparPagina(dAss, dAss.getPage(ap), (x, y) => y > yA + 70 || y < yA - 20, (e, f) => f > yA + 70 || f < yA - 20);
-  // páginas finais (informações complementares / anotações): só o número da página sai
-  const finais = []; for (let p = (ap != null ? ap + 1 : nPag); p < nPag; p++) finais.push(p);
-  finais.forEach(p => limparPagina(dFim, dFim.getPage(p), (x, y) => perto(T[p].filter(t => ehNumPag(t.s)), x, y)));
+  // páginas finais do modelo (informações complementares / anotações): não saem mais (pedido do Vitor 27/11)
 
   const out = await PDFDocument.create();
   const fonte = await out.embedFont(StandardFonts.Helvetica), negrito = await out.embedFont(StandardFonts.HelveticaBold);
@@ -2616,9 +2720,7 @@ async function gerarCadernoNovo() {
     const yTop = cursor - 24;
     pa.drawPage(await out.embedPage(dAss.getPage(ap), { left: 0, right: PW, bottom: yA - 20, top: yA + 70 }), { x: 0, y: yTop - 90 });
   }
-  // 6) páginas finais do modelo (informações complementares, anotações)
-  if (finais.length && MODO !== 'orc') (await out.copyPages(dFim, finais)).forEach(p => out.addPage(p)); // proposta comercial: sem essas páginas
-  // 7) numeração "N / total" no mesmo lugar e estilo do caderno (a capa não tem número)
+  // 6) numeração "N / total" no mesmo lugar e estilo do caderno (a capa não tem número)
   let np = null; for (const l of T) { np = l.find(t => ehNumPag(t.s)); if (np) break; }
   const total = out.getPageCount();
   out.getPages().forEach((p, i) => {
@@ -2640,14 +2742,27 @@ async function compartilharArquivo(arq) {
   if (navigator.canShare && navigator.canShare({ files: [arq] })) { await navigator.share({ files: [arq], title: arq.name }); return true; }
   baixarArquivo(arq); return true;
 }
-function mostrarPronto(arq) {
-  $('prontoNome').textContent = arq.name;
+// arqs: um File ou uma lista [{ arq, rotulo }] (caderno + PDF de orçamento: cada um com seus botões,
+// porque vão para setores diferentes).
+function mostrarPronto(arqs) {
+  const lista = Array.isArray(arqs) ? arqs : [{ arq: arqs }];
+  const box = $('prontoLista'); box.innerHTML = '';
   $('prontoMsg').textContent = '';
-  $('prontoEnviar').onclick = async () => {
-    try { await compartilharArquivo(arq); $('pronto').style.display = 'none'; }
-    catch (e) { if (e.name !== 'AbortError') { baixarArquivo(arq); $('prontoMsg').textContent = 'Não abriu o compartilhar; o arquivo foi salvo em Downloads.'; } }
-  };
-  $('prontoSalvar').onclick = () => { baixarArquivo(arq); $('prontoMsg').textContent = 'Salvo na pasta Downloads do celular.'; };
+  lista.forEach(({ arq, rotulo }) => {
+    const d = document.createElement('div');
+    d.className = 'prontoArq';
+    d.innerHTML = (rotulo ? `<div style="font-size:14px;font-weight:700;margin-bottom:2px">${licEsc(rotulo)}</div>` : '') +
+      `<div style="font-size:13px;color:#6b7280;word-break:break-word;margin-bottom:10px">${licEsc(arq.name)}</div>
+      <button class="ok" style="width:100%">📤 Enviar / compartilhar</button>
+      <button class="sec" style="width:100%;margin-top:8px">⬇ Salvar no celular</button>`;
+    const [bEnv, bSal] = d.querySelectorAll('button');
+    bEnv.onclick = async () => {
+      try { await compartilharArquivo(arq); if (lista.length === 1) $('pronto').style.display = 'none'; else $('prontoMsg').textContent = 'Enviado: ' + arq.name; }
+      catch (e) { if (e.name !== 'AbortError') { baixarArquivo(arq); $('prontoMsg').textContent = 'Não abriu o compartilhar; o arquivo foi salvo em Downloads.'; } }
+    };
+    bSal.onclick = () => { baixarArquivo(arq); $('prontoMsg').textContent = 'Salvo na pasta Downloads do celular.'; };
+    box.appendChild(d);
+  });
   $('pronto').style.display = 'flex';
 }
 $('prontoFechar').onclick = () => { $('pronto').style.display = 'none'; };
@@ -2667,7 +2782,7 @@ $('btnGerar').onclick = async () => {
     // Nome = caderno + etapa: "<caderno> - CONTRAMARCO ETAPA 01.pdf" / "... ESQUADRIAS ETAPA 02.pdf".
     // Sugere o próximo número (por tipo e por O.S.), mas deixa você mudar na hora.
     const base = (nomeArquivo || 'caderno').replace(/\.pdf$/i, '');
-    let nome, bytes;
+    let nome, bytes, orc = null;
     if (obra.nova) { // caderno do zero: gera o caderno completo (capa, cabeçalho, quadros, assinatura)
       btn.disabled = true; btn.textContent = 'Montando o caderno…';
       status('Montando o caderno da obra nova...');
@@ -2686,10 +2801,17 @@ $('btnGerar').onclick = async () => {
       status('Gerando PDF...');
       bytes = await gerarPdf();
       nome = `${base} - ${label} ETAPA ${String(n).padStart(2, '0')}.pdf`;
+      // itens adicionais "para orçamento": PDF separado, para o setor de orçamentos
+      const itOrc = extras.filter(ex => ex.finalidade === 'orc');
+      if (itOrc.length) {
+        status('Gerando o PDF de orçamento...');
+        orc = new File([await gerarPdfOrcamento(itOrc)], `${base} - ITENS PARA ORÇAMENTO ETAPA ${String(n).padStart(2, '0')}.pdf`, { type: 'application/pdf' });
+      }
     }
     const arq = new File([bytes], nome, { type: 'application/pdf' });
-    status('PDF gerado: ' + nome);
-    await entregarArquivo(arq);
+    status('PDF gerado: ' + nome + (orc ? ' + ' + orc.name : ''));
+    if (orc) mostrarPronto([{ arq, rotulo: 'Caderno (produção)' }, { arq: orc, rotulo: 'Itens para orçamento' }]);
+    else await entregarArquivo(arq);
   } catch (e) { erroGerar(e); }
   finally { btn.disabled = false; btn.textContent = rotulo; }
 };
